@@ -67,6 +67,19 @@ function handleInvoiceUpload($fileInputName, $existingPath = '')
     return $uploadDirRel . $newName;
 }
 
+// Safely delete an existing invoice file from uploads/invoices
+function deleteInvoiceFile($path)
+{
+    if (!$path) {
+        return;
+    }
+    $uploadDirAbs = __DIR__ . '/../uploads/invoices/';
+    $file = $uploadDirAbs . basename((string)$path);
+    if (is_file($file) && file_exists($file)) {
+        @unlink($file);
+    }
+}
+
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action'])) {
@@ -146,8 +159,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         } elseif ($action == 'delete_store') {
             $pdo->prepare("DELETE FROM stores WHERE name = ?")->execute([$_POST['delete_item']]);
         } elseif ($action == 'delete_fixed') {
+            // Delete invoice file if exists, then remove row
+            $stmt = $pdo->prepare("SELECT invoice_copy FROM fixed_expenses WHERE id = ?");
+            $stmt->execute([$_POST['id']]);
+            $inv = $stmt->fetchColumn();
+            if ($inv) { deleteInvoiceFile($inv); }
             $pdo->prepare("DELETE FROM fixed_expenses WHERE id = ?")->execute([$_POST['id']]);
         } elseif ($action == 'delete_regular') {
+            // Delete invoice file if exists, then remove row
+            $stmt = $pdo->prepare("SELECT invoice_copy FROM regular_expenses WHERE id = ?");
+            $stmt->execute([$_POST['id']]);
+            $inv = $stmt->fetchColumn();
+            if ($inv) { deleteInvoiceFile($inv); }
             $pdo->prepare("DELETE FROM regular_expenses WHERE id = ?")->execute([$_POST['id']]);
         } elseif ($action == 'delete_combined') {
             $table = ($_POST['source'] == 'קבועה') ? 'summary_expenses' : 'regular_expenses';
@@ -155,6 +178,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 http_response_code(400);
                 exit('Invalid table');
             }
+            // Delete invoice file if exists, then remove row from the resolved table
+            $stmt = $pdo->prepare("SELECT invoice_copy FROM $table WHERE id = ?");
+            $stmt->execute([$_POST['id']]);
+            $inv = $stmt->fetchColumn();
+            if ($inv) { deleteInvoiceFile($inv); }
             $pdo->prepare("DELETE FROM $table WHERE id = ?")->execute([$_POST['id']]);
         } elseif ($action == 'import_fixed' || $action == 'import_regular' || $action == 'import_summary') {
             $table = str_replace('import_', '', $action) . '_expenses';
@@ -353,6 +381,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 echo "<script>alert('" . addslashes($e->getMessage()) . "');</script>";
                 echo "<script>window.location.href = 'expenses.php?tab=" . (isset($_POST['current_tab']) ? $_POST['current_tab'] : '') . "';</script>";
                 exit;
+            }
+
+            // If a new file was uploaded (path changed), delete the old one
+            if (!empty($existingInvoice) && $invoicePath !== $existingInvoice) {
+                deleteInvoiceFile($existingInvoice);
             }
 
             $data = [
