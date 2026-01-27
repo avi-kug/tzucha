@@ -100,8 +100,256 @@ CREATE TABLE summary_expenses (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Insert some initial data for testing
-INSERT INTO departments (name) VALUES ('כללי'), ('מנהלה'), ('חינוך'), ('תרבות');
-INSERT INTO categories (name) VALUES ('שכר'), ('שכירות'), ('שירותים'), ('ציוד');
+-- Insert initial data
+INSERT INTO departments (name) VALUES
+('אחים לחסד'),
+('איסוף קופות'),
+('בגופו'),
+('בית נאמן'),
+('חו"ל'),
+('יעזורו תעסוקה'),
+('מצהלות'),
+('משרד ראשי'),
+('שיקום משפחות'),
+('שמחם'),
+('תמיכות'),
+('יעזורו זכויות'),
+('כח הרבים');
+INSERT INTO categories (name) VALUES
+('אירועים'),
+('אגף'),
+('גרפיקה'),
+('דואר'),
+('הדפסות'),
+('הוצאות משרד'),
+('הוצאות עמותה'),
+('כללי'),
+('כתיבה'),
+('מתנות'),
+('נסיעות'),
+('קופות'),
+('תמיכות'),
+('תקשורת');
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס נציגים' FROM categories WHERE name = 'אירועים';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אחים לחסד' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'איסוף קופות' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'בגופו' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'בית נאמן' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'חו"ל' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'יעזורו תעסוקה' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מצהלות' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'משרד ראשי' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שיקום משפחות' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שמחם' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'תמיכות' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'יעזורו זכויות' FROM categories WHERE name = 'אגף';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כח הרבים' FROM categories WHERE name = 'אגף';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אלפון' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'דוח לאחים' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'חנוכה' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס מצהלות' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס נציגים' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מתנות' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון על הפרק' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'פרסום - מודעות' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פורים' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פסח' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין תשרי' FROM categories WHERE name = 'גרפיקה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שבועות' FROM categories WHERE name = 'גרפיקה';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אלפון' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'דוח לאחים' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'חנוכה' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס מצהלות' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס נציגים' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מתנות' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון על הפרק' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'פרסום - מודעות' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פורים' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פסח' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין תשרי' FROM categories WHERE name = 'דואר';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שבועות' FROM categories WHERE name = 'דואר';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אלפון' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'דוח לאחים' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'חנוכה' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס מצהלות' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס נציגים' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מתנות' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון על הפרק' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'פרסום - מודעות' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פורים' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פסח' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין תשרי' FROM categories WHERE name = 'הדפסות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שבועות' FROM categories WHERE name = 'הדפסות';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אוכל ושתיה' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'דיו וטונרים' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'דפים' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מדפסות' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'ניקיון' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'ציוד מחשב' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'ציוד משרדי' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שכירות משרד' FROM categories WHERE name = 'הוצאות משרד';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'תיקונים' FROM categories WHERE name = 'הוצאות משרד';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'הוצאות עמותה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מרכז הצדקה קבוע' FROM categories WHERE name = 'הוצאות עמותה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עמלות סליקה' FROM categories WHERE name = 'הוצאות עמותה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'רוח' FROM categories WHERE name = 'הוצאות עמותה';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'כללי';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אלפון' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'דוח לאחים' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'חנוכה' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס מצהלות' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כינוס נציגים' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מתנות' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'עלון על הפרק' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'פרסום - מודעות' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פורים' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין פסח' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'קמפיין תשרי' FROM categories WHERE name = 'כתיבה';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שבועות' FROM categories WHERE name = 'כתיבה';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'מתנות';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'נסיעות';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'ייצור קופות' FROM categories WHERE name = 'קופות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'קופות';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'תמיכות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'פורים' FROM categories WHERE name = 'תמיכות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'פסח' FROM categories WHERE name = 'תמיכות';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'תשרי' FROM categories WHERE name = 'תמיכות';
+
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אינטרנט' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'אינטרנט וטלפון' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'טלפון' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'כללי' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מחשוב' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מיילים' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'מערכות טלפוניות' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'סינון' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'שליחת הודעות' FROM categories WHERE name = 'תקשורת';
+INSERT INTO expense_types (category_id, name)
+SELECT id, 'תוכנה' FROM categories WHERE name = 'תקשורת';
+
 INSERT INTO paid_by_options (name) VALUES ('מזומן'), ('אשראי'), ('העברה בנקאית'), ('צ׳ק');
 INSERT INTO from_accounts (name) VALUES ('חשבון ראשי'), ('חשבון משני'), ('קופה');

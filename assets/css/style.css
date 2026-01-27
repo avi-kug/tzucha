@@ -2,6 +2,9 @@
     --sidebar-width: 240px;
     --toolbar-height: 160px;
     --footer-height: 50px;
+    --brand-start: #667eea; /* match sidebar gradient start */
+    --brand-end: #764ba2;   /* match sidebar gradient end */
+    --brand-solid: #6b6fe4; /* mid tone for solid brand */
 }
 
 * {
@@ -217,4 +220,95 @@ footer {
 .footer-fixed p {
     margin: 0;
     font-weight: 500;
+}
+
+/* Brand buttons matching the sidebar theme */
+.btn-brand {
+    color: #fff !important;
+    background: linear-gradient(135deg, var(--brand-start) 0%, var(--brand-end) 100%);
+    border-color: rgba(0,0,0,0.05);
+}
+.btn-brand:hover,
+.btn-brand:focus {
+    color: #fff !important;
+    filter: brightness(0.95);
+}
+
+.btn-brand-outline {
+    color: var(--brand-end) !important;
+    background-color: transparent;
+    border: 1px solid var(--brand-end) !important;
+}
+.btn-brand-outline:hover,
+.btn-brand-outline:focus {
+    color: #fff !important;
+    background: linear-gradient(135deg, var(--brand-start) 0%, var(--brand-end) 100%);
+    border-color: transparent !important;
+}
+
+/* Action bar above tables, inside card body */
+.table-action-bar {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid #eee;
+    background: #fff;
+    margin-bottom: 8px;
+    overflow-x: auto;
+}
+
+.table-action-bar form {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+}
+
+.table-action-bar .btn {
+    margin-bottom: 0 !important;
+}
+
+/* Align headers in annual summary (DataTables) to right and position sort icon */
+#combinedTable.dataTable thead th,
+#combinedTable.dataTable thead td {
+    text-align: right !important;
+}
+
+#combinedTable.dataTable thead .sorting,
+#combinedTable.dataTable thead .sorting_asc,
+#combinedTable.dataTable thead .sorting_desc,
+#combinedTable.dataTable thead .sorting_asc_disabled,
+#combinedTable.dataTable thead .sorting_desc_disabled {
+    background-position: right 6px center !important; /* move icon to the far right */
+    background-repeat: no-repeat !important;
+    background-size: 12px 12px !important; /* ensure consistent icon size */
+    padding-right: 28px !important; /* larger space so icon never overlaps title */
+    padding-left: 8px !important;
+}
+
+/* Apply same alignment and sort icon positioning to fixed and regular tables */
+#fixedTable.dataTable thead th,
+#fixedTable.dataTable thead td,
+#regularTable.dataTable thead th,
+#regularTable.dataTable thead td {
+    text-align: right !important;
+}
+
+#fixedTable.dataTable thead .sorting,
+#fixedTable.dataTable thead .sorting_asc,
+#fixedTable.dataTable thead .sorting_desc,
+#fixedTable.dataTable thead .sorting_asc_disabled,
+#fixedTable.dataTable thead .sorting_desc_disabled,
+#regularTable.dataTable thead .sorting,
+#regularTable.dataTable thead .sorting_asc,
+#regularTable.dataTable thead .sorting_desc,
+#regularTable.dataTable thead .sorting_asc_disabled,
+#regularTable.dataTable thead .sorting_desc_disabled {
+    background-position: right 6px center !important;
+    background-repeat: no-repeat !important;
+    background-size: 12px 12px !important;
+    padding-right: 28px !important;
+    padding-left: 8px !important;
 }

@@ -5,15 +5,17 @@ ini_set('display_errors', 1);
 // Set proper encoding headers
 header('Content-Type: text/html; charset=UTF-8');
 header('Content-Language: he');
+mb_internal_encoding('UTF-8');
+ini_set('default_charset', 'UTF-8');
 
-include '../templates/header.php';
 require_once '../config/db.php';
 require_once '../vendor/autoload.php';
 
 session_start();
 $message = '';
 if (isset($_SESSION['message'])) {
-    $message = $_SESSION['message'];
+
+$message = $_SESSION['message'];
     unset($_SESSION['message']);
 }
 
@@ -76,6 +78,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             echo "<script>alert('הוצאות הועתקו בהצלחה לסיכום השנתי!');</script>";
             echo "<script>window.location.href = 'expenses.php';</script>";
             exit;
+        } elseif ($action == 'bulk_set_fixed_month') {
+            $targetMonth = isset($_POST['target_month']) ? trim($_POST['target_month']) : '';
+            if (!preg_match('/^\\d{4}-\\d{2}$/', $targetMonth)) {
+                $_SESSION['message'] = 'חודש יעד לא תקין. יש לבחור לפי פורמט YYYY-MM.';
+                header('Location: expenses.php?tab=fixed');
+                exit;
+            }
+
+            // Build update to set all fixed_expenses dates into the selected month,
+            // clamping the day to the last day of that month when needed.
+            $updateSql = "UPDATE fixed_expenses SET date = DATE_ADD(STR_TO_DATE(CONCAT(?, '-01'), '%Y-%m-%d'), INTERVAL (LEAST(DAY(date), DAY(LAST_DAY(STR_TO_DATE(CONCAT(?, '-01'), '%Y-%m-%d')))) - 1) DAY)";
+            $params = [$targetMonth, $targetMonth];
+
+            // Respect current filters if provided (month/year in GET) to affect only visible rows
+            $dateFilterParts = [];
+            $dateFilterParams = [];
+            $filterMonth = isset($_GET['month']) ? (int)$_GET['month'] : 0;
+            $filterYear = isset($_GET['year']) ? (int)$_GET['year'] : 0;
+            if ($filterYear > 0) {
+                $dateFilterParts[] = "YEAR(date) = ?";
+                $dateFilterParams[] = $filterYear;
+            }
+            if ($filterMonth > 0) {
+                $dateFilterParts[] = "MONTH(date) = ?";
+                $dateFilterParams[] = $filterMonth;
+            }
+            $dateFilterSqlLocal = $dateFilterParts ? (" WHERE " . implode(" AND ", $dateFilterParts)) : '';
+            if ($dateFilterSqlLocal) {
+                $updateSql .= $dateFilterSqlLocal;
+                $params = array_merge($params, $dateFilterParams);
+            }
+
+            $stmt = $pdo->prepare($updateSql);
+            $stmt->execute($params);
+
+            // Redirect back to fixed tab, presetting filters to target month for convenience
+            $y = (int)substr($targetMonth, 0, 4);
+            $m = (int)substr($targetMonth, 5, 2);
+            header('Location: expenses.php?tab=fixed&year=' . $y . '&month=' . $m);
+            exit;
         } elseif ($action == 'add_department') {
             $pdo->prepare("INSERT INTO departments (name) VALUES (?) ON DUPLICATE KEY UPDATE name=name")->execute([$_POST['new_department']]);
         } elseif ($action == 'add_category') {
@@ -89,6 +131,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $pdo->prepare("INSERT INTO paid_by_options (name) VALUES (?) ON DUPLICATE KEY UPDATE name=name")->execute([$_POST['new_paid_by']]);
         } elseif ($action == 'add_from_account') {
             $pdo->prepare("INSERT INTO from_accounts (name) VALUES (?) ON DUPLICATE KEY UPDATE name=name")->execute([$_POST['new_from_account']]);
+        } elseif ($action == 'add_store') {
+            $pdo->prepare("INSERT INTO stores (name) VALUES (?) ON DUPLICATE KEY UPDATE name=name")->execute([$_POST['new_store']]);
         } elseif ($action == 'delete_department') {
             $pdo->prepare("DELETE FROM departments WHERE name = ?")->execute([$_POST['delete_item']]);
         } elseif ($action == 'delete_category') {
@@ -99,30 +143,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $pdo->prepare("DELETE FROM paid_by_options WHERE name = ?")->execute([$_POST['delete_item']]);
         } elseif ($action == 'delete_from_account') {
             $pdo->prepare("DELETE FROM from_accounts WHERE name = ?")->execute([$_POST['delete_item']]);
+        } elseif ($action == 'delete_store') {
+            $pdo->prepare("DELETE FROM stores WHERE name = ?")->execute([$_POST['delete_item']]);
         } elseif ($action == 'delete_fixed') {
             $pdo->prepare("DELETE FROM fixed_expenses WHERE id = ?")->execute([$_POST['id']]);
         } elseif ($action == 'delete_regular') {
             $pdo->prepare("DELETE FROM regular_expenses WHERE id = ?")->execute([$_POST['id']]);
         } elseif ($action == 'delete_combined') {
             $table = ($_POST['source'] == 'קבועה') ? 'summary_expenses' : 'regular_expenses';
+            if (!in_array($table, ['summary_expenses','regular_expenses'], true)) {
+                http_response_code(400);
+                exit('Invalid table');
+            }
             $pdo->prepare("DELETE FROM $table WHERE id = ?")->execute([$_POST['id']]);
         } elseif ($action == 'import_fixed' || $action == 'import_regular' || $action == 'import_summary') {
             $table = str_replace('import_', '', $action) . '_expenses';
-            if ($table == 'summary_expenses') $table = 'summary_expenses';
+            if (!in_array($table, ['fixed_expenses','regular_expenses','summary_expenses'], true)) {
+                http_response_code(400);
+                exit('Invalid table');
+            }
             if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] == 0) {
                 $file = $_FILES['excel_file']['tmp_name'];
                 $fileName = $_FILES['excel_file']['name'];
                 $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
                 
                 // Check file extension
-                if (!in_array($fileExtension, ['xlsx', 'xls'])) {
+                if (!in_array($fileExtension, ['xlsx', 'xls', 'xlsm'])) {
                     echo "<script>alert('נא להעלות קובץ Excel בלבד (.xlsx או .xls)');</script>";
                     echo "<script>window.location.href = 'expenses.php';</script>";
                     exit;
                 }
                 
                 try {
-                    $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file);
+                    $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($file);
+                    if (method_exists($reader, 'setReadDataOnly')) {
+                        $reader->setReadDataOnly(true);
+                    }
+                    $spreadsheet = $reader->load($file);
                     $worksheet = $spreadsheet->getActiveSheet();
                     $rows = $worksheet->toArray();
                     array_shift($rows); // Remove header
@@ -155,14 +212,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             continue;
                         }
 
+                        // Ensure expense type is registered for the category before saving the row
+                        ensureExpenseTypeExists($pdo, $row[5] ?? '', $row[6] ?? '');
+
                         $stmt = $pdo->prepare("INSERT INTO $table (date, for_what, store, amount, department, category, expense_type, paid_by, from_account, invoice_copy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                         $stmt->execute($row);
                         $count++;
                         $rowIndex++;
                     }
 
-
-                    echo "<script>alert('הוצאות הועלו בהצלחה מ-Excel! ({$count} רשומות נוספו, {$skipped} שורות נדחו)');</script>";
+                    $summaryMsg = "הוצאות הועלו בהצלחה מ-Excel! ({$count} רשומות נוספו, {$skipped} שורות נדחו)";
+                    if (!empty($errors)) {
+                        $summaryMsg .= "\n" . implode("\n", array_slice($errors, 0, 15));
+                        if (count($errors) > 15) {
+                            $summaryMsg .= "\n(הוצגו 15 שגיאות ראשונות מתוך " . count($errors) . ")";
+                        }
+                    }
+                    $_SESSION['message'] = nl2br(htmlspecialchars($summaryMsg, ENT_QUOTES, 'UTF-8'));
                     echo "<script>window.location.href = 'expenses.php';</script>";
                     exit;
                 } catch (Exception $e) {
@@ -173,8 +239,52 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         } elseif ($action == 'export_fixed' || $action == 'export_regular' || $action == 'export_summary') {
             $table = str_replace('export_', '', $action) . '_expenses';
-            if ($table == 'summary_expenses') $table = 'summary_expenses';
-            $stmt = $pdo->query("SELECT date, for_what, store, amount, department, category, expense_type, paid_by, from_account, invoice_copy FROM $table ORDER BY date DESC");
+            if (!in_array($table, ['fixed_expenses','regular_expenses','summary_expenses'], true)) {
+                http_response_code(400);
+                exit('Invalid table');
+            }
+
+            // Build filters from current GET (month/year)
+            $dateFilterParts = [];
+            $dateFilterParams = [];
+            $filterMonth = isset($_GET['month']) ? (int)$_GET['month'] : 0;
+            $filterYear = isset($_GET['year']) ? (int)$_GET['year'] : 0;
+            if ($filterYear > 0) {
+                $dateFilterParts[] = "YEAR(date) = ?";
+                $dateFilterParams[] = $filterYear;
+            }
+            if ($filterMonth > 0) {
+                $dateFilterParts[] = "MONTH(date) = ?";
+                $dateFilterParams[] = $filterMonth;
+            }
+            $whereSql = $dateFilterParts ? (" WHERE " . implode(" AND ", $dateFilterParts)) : '';
+
+            // Apply search term across columns if provided
+            $searchTerm = isset($_POST['search_term']) ? trim((string)$_POST['search_term']) : '';
+            if ($searchTerm !== '') {
+                $likeClauses = [];
+                foreach (['date','for_what','store','amount','department','category','expense_type','paid_by','from_account','invoice_copy'] as $col) {
+                    $likeClauses[] = "$col LIKE ?";
+                    $dateFilterParams[] = '%' . $searchTerm . '%';
+                }
+                $searchSql = '(' . implode(' OR ', $likeClauses) . ')';
+                $whereSql .= ($whereSql ? ' AND ' : ' WHERE ') . $searchSql;
+            }
+
+            // Sorting from posted order_by/order_dir (whitelisted)
+            $allowedCols = ['date','for_what','store','amount','department','category','expense_type','paid_by','from_account','invoice_copy'];
+            $orderBy = isset($_POST['order_by']) ? $_POST['order_by'] : 'date';
+            $orderDir = isset($_POST['order_dir']) ? strtolower($_POST['order_dir']) : 'desc';
+            if (!in_array($orderBy, $allowedCols, true)) {
+                $orderBy = 'date';
+            }
+            if (!in_array($orderDir, ['asc','desc'], true)) {
+                $orderDir = 'desc';
+            }
+
+            $sql = "SELECT date, for_what, store, amount, department, category, expense_type, paid_by, from_account, invoice_copy FROM $table" . $whereSql . " ORDER BY $orderBy $orderDir";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($dateFilterParams);
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
@@ -224,7 +334,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $writer->save('php://output');
             exit;
         } else {
-            $table = ($action == 'add_fixed' || $action == 'edit_fixed') ? 'fixed_expenses' : 'regular_expenses';
+            if ($action == 'add_fixed' || $action == 'edit_fixed') {
+                $table = 'fixed_expenses';
+            } elseif ($action == 'edit_summary') {
+                $table = 'summary_expenses';
+            } else {
+                $table = 'regular_expenses';
+            }
+            if (!in_array($table, ['fixed_expenses','regular_expenses','summary_expenses'], true)) {
+                http_response_code(400);
+                exit('Invalid table');
+            }
 
             try {
                 $existingInvoice = isset($_POST['existing_invoice_copy']) ? $_POST['existing_invoice_copy'] : '';
@@ -247,6 +367,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 'from_account' => $_POST['from_account'],
                 'invoice_copy' => $invoicePath
             ];
+            // Make sure the selected expense type is associated with the chosen category
+            ensureExpenseTypeExists($pdo, $data['category'] ?? '', $data['expense_type'] ?? '');
             if ($action == 'edit_fixed' || $action == 'edit_regular') {
                 $stmt = $pdo->prepare("UPDATE $table SET date=?, for_what=?, store=?, amount=?, department=?, category=?, expense_type=?, paid_by=?, from_account=?, invoice_copy=? WHERE id=?");
                 $stmt->execute(array_merge(array_values($data), [$_POST['id']]));
@@ -257,8 +379,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
         
         // Determine which tab to return to based on the action or current_tab
-        $dataActions = ['add_department', 'add_category', 'add_expense_type', 'add_paid_by', 'add_from_account', 
-                       'delete_department', 'delete_category', 'delete_expense_type', 'delete_paid_by', 'delete_from_account'];
+        $dataActions = ['add_department', 'add_category', 'add_expense_type', 'add_paid_by', 'add_from_account', 'add_store',
+                   'delete_department', 'delete_category', 'delete_expense_type', 'delete_paid_by', 'delete_from_account', 'delete_store'];
         
         // Get the current tab from POST or determine by action
         $currentTab = isset($_POST['current_tab']) ? $_POST['current_tab'] : '';
@@ -285,6 +407,13 @@ $departments = $pdo->query("SELECT name FROM departments ORDER BY name")->fetchA
 $categories = $pdo->query("SELECT name FROM categories ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
 $paid_by_options = $pdo->query("SELECT name FROM paid_by_options ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
 $from_accounts = $pdo->query("SELECT name FROM from_accounts ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+// טען רשימת חנויות פעם אחת עם טיפול בשגיאות (אם הטבלה לא קיימת)
+$stores = [];
+try {
+    $stores = $pdo->query("SELECT name FROM stores ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
+} catch (Throwable $e) {
+    $stores = [];
+}
 
 // Fetch expense types grouped by category
 $expenseTypesQuery = $pdo->query("SELECT c.name as category, et.name as type FROM categories c LEFT JOIN expense_types et ON c.id = et.category_id ORDER BY c.name, et.name");
@@ -293,12 +422,16 @@ while ($row = $expenseTypesQuery->fetch()) {
     $expenseTypes[$row['category']][] = $row['type'];
 }
 
-function renderImportExportButtons($importAction, $exportAction)
+function renderImportExportButtons($importAction, $exportAction, $tableId = '')
 {
-    return "<button type=\"button\" class=\"btn btn-success mb-3\" data-bs-toggle=\"modal\" data-bs-target=\"#importModal\" onclick=\"setImportAction('{$importAction}')\">ייבא מ-Excel</button>\n" .
-        "<form method=\"post\" style=\"display: inline;\">\n" .
+    $tableAttr = $tableId ? " data-table-id=\"{$tableId}\"" : '';
+    return "<button type=\"button\" class=\"btn btn-brand\" data-bs-toggle=\"modal\" data-bs-target=\"#importModal\" onclick=\"setImportAction('{$importAction}')\">ייבא מ-Excel</button>\n" .
+        "<form method=\"post\" style=\"display: inline; margin: 0;\"{$tableAttr}>\n" .
         "    <input type=\"hidden\" name=\"action\" value=\"{$exportAction}\">\n" .
-        "    <button type=\"submit\" class=\"btn btn-info mb-3\">ייצא ל-Excel</button>\n" .
+        "    <input type=\"hidden\" name=\"order_by\" value=\"\">\n" .
+        "    <input type=\"hidden\" name=\"order_dir\" value=\"\">\n" .
+        "    <input type=\"hidden\" name=\"search_term\" value=\"\">\n" .
+        "    <button type=\"submit\" class=\"btn btn-brand\">ייצא ל-Excel</button>\n" .
         "</form>";
 }
 
@@ -330,7 +463,7 @@ function renderDeleteForm($action, $id, $currentTab, $extraFields = [])
     if ($currentTab) {
         $form .= "<input type='hidden' name='current_tab' value='{$currentTab}'>";
     }
-    $form .= "<button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק הוצאה זו?\")'>מחק</button>";
+    $form .= "<button type='submit' class='btn btn-sm btn-brand' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק הוצאה זו?\")'>מחק</button>";
     $form .= "</form>";
 
     return $form;
@@ -348,7 +481,7 @@ function renderSimpleTable($headers, $rows, $tableClass = 'table table-striped')
     foreach ($rows as $row) {
         $tbody .= '<tr>';
         foreach ($row as $cell) {
-            $tbody .= '<td>' . $cell . '</td>';
+            $tbody .= '<td>' . htmlspecialchars((string)$cell, ENT_QUOTES, 'UTF-8') . '</td>';
         }
         $tbody .= '</tr>';
     }
@@ -359,7 +492,24 @@ function renderSimpleTable($headers, $rows, $tableClass = 'table table-striped')
 
 function renderEditButton($type, $row)
 {
-    return "<button class='btn btn-sm btn-warning' data-bs-toggle='modal' data-bs-target='#editExpenseModal' data-type='{$type}' data-id='{$row['id']}' data-date='{$row['date']}' data-for_what='{$row['for_what']}' data-store='{$row['store']}' data-amount='{$row['amount']}' data-department='{$row['department']}' data-category='{$row['category']}' data-expense_type='{$row['expense_type']}' data-paid_by='{$row['paid_by']}' data-from_account='{$row['from_account']}' data-invoice_copy='{$row['invoice_copy']}' onclick='editExpense(this)'>ערוך</button>";
+    $attrs = [
+        'type' => $type,
+        'id' => $row['id'],
+        'date' => $row['date'],
+        'for_what' => $row['for_what'],
+        'store' => $row['store'],
+        'amount' => $row['amount'],
+        'department' => $row['department'],
+        'category' => $row['category'],
+        'expense_type' => $row['expense_type'],
+        'paid_by' => $row['paid_by'],
+        'from_account' => $row['from_account'],
+        'invoice_copy' => $row['invoice_copy']
+    ];
+    foreach ($attrs as $k => $v) {
+        $attrs[$k] = htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+    }
+    return "<button class='btn btn-sm btn-brand' data-bs-toggle='modal' data-bs-target='#editExpenseModal' data-type='{$attrs['type']}' data-id='{$attrs['id']}' data-date='{$attrs['date']}' data-for_what='{$attrs['for_what']}' data-store='{$attrs['store']}' data-amount='{$attrs['amount']}' data-department='{$attrs['department']}' data-category='{$attrs['category']}' data-expense_type='{$attrs['expense_type']}' data-paid_by='{$attrs['paid_by']}' data-from_account='{$attrs['from_account']}' data-invoice_copy='{$attrs['invoice_copy']}' onclick='editExpense(this)'>ערוך</button>";
 }
 
 function formatInvoiceCopy($path)
@@ -374,15 +524,15 @@ function formatInvoiceCopy($path)
 function renderExpenseRow($row, $type, $deleteForm, $includeSource = false, $includeEdit = true)
 {
     $cells = [
-        $row['date'],
-        $row['for_what'],
-        $row['store'],
-        $row['amount'],
-        $row['department'],
-        $row['category'],
-        $row['expense_type'],
-        $row['paid_by'],
-        $row['from_account'],
+        htmlspecialchars((string)$row['date'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['for_what'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['store'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['amount'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['department'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['category'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['expense_type'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['paid_by'], ENT_QUOTES, 'UTF-8'),
+        htmlspecialchars((string)$row['from_account'], ENT_QUOTES, 'UTF-8'),
         formatInvoiceCopy($row['invoice_copy'])
     ];
 
@@ -450,11 +600,58 @@ function normalizeImportedDate($value)
 
     return null;
 }
+
+// Ensure the expense type exists for the given category (creates if missing)
+function ensureExpenseTypeExists(PDO $pdo, $categoryName, $expenseTypeName)
+{
+    if (!$categoryName || !$expenseTypeName) {
+        return;
+    }
+    $stmt = $pdo->prepare("SELECT id FROM categories WHERE name = ?");
+    $stmt->execute([$categoryName]);
+    $cat = $stmt->fetch();
+    if (!$cat || empty($cat['id'])) {
+        return;
+    }
+    $catId = $cat['id'];
+
+    $check = $pdo->prepare("SELECT 1 FROM expense_types WHERE category_id = ? AND name = ? LIMIT 1");
+    $check->execute([$catId, $expenseTypeName]);
+    if (!$check->fetch()) {
+        $insert = $pdo->prepare("INSERT INTO expense_types (category_id, name) VALUES (?, ?) ON DUPLICATE KEY UPDATE name = VALUES(name)");
+        $insert->execute([$catId, $expenseTypeName]);
+    }
+}
 ?>
+<?php include '../templates/header.php'; ?>
 <h2>הוצאות</h2>
 <?php if ($message): ?>
-<div class="alert alert-info" role="alert">
-    <?php echo $message; ?>
+<!-- Summary Message Modal -->
+<div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="messageModalLabel">תוצאת ייבוא</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+            </div>
+            <div class="modal-body">
+                <?php echo $message; ?>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-brand" data-bs-dismiss="modal">סגור</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var el = document.getElementById('messageModal');
+        if (el) {
+            var modal = new bootstrap.Modal(el);
+            modal.show();
+        }
+    });
+    </script>
 </div>
 <?php endif; ?>
 <?php
@@ -476,7 +673,13 @@ if ($filterMonth > 0) {
 $dateFilterSql = $dateFilterParts ? " WHERE " . implode(" AND ", $dateFilterParts) : "";
 $combinedDateFilterParams = array_merge($dateFilterParams, $dateFilterParams);
 
-$activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
+$allowedTabs = ['fixed','regular','combined','dashboard','data'];
+$activeTab = isset($_GET['tab']) ? $_GET['tab'] : (isset($_COOKIE['expenses_tab']) ? $_COOKIE['expenses_tab'] : 'fixed');
+if (!in_array($activeTab, $allowedTabs, true)) {
+    $activeTab = 'fixed';
+}
+// Keep cookie in sync server-side so refresh lands on the same tab
+@setcookie('expenses_tab', $activeTab, time() + 31536000, '/');
 ?>
 <div class="sticky-toolbar">
     <form method="get" class="row g-2 align-items-end mb-3" id="filterForm">
@@ -500,25 +703,25 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
             </select>
         </div>
         <div class="col-auto">
-            <button type="submit" class="btn btn-primary">סנן</button>
-            <a class="btn btn-outline-secondary" href="expenses.php<?php echo $activeTab ? '?tab=' . urlencode($activeTab) : ''; ?>">נקה סינון</a>
+            <button type="submit" class="btn btn-brand">סנן</button>
+            <a id="clearFiltersLink" class="btn btn-brand-outline" href="expenses.php<?php echo $activeTab ? '?tab=' . urlencode($activeTab) : ''; ?>">נקה סינון</a>
         </div>
     </form>
     <ul class="nav nav-tabs" id="expensesTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link <?php echo ($activeTab === 'fixed') ? 'active' : ''; ?>" id="fixed-tab" data-bs-toggle="tab" data-bs-target="#fixed" type="button" role="tab" aria-controls="fixed" aria-selected="<?php echo ($activeTab === 'fixed') ? 'true' : 'false'; ?>">הוצאות קבועות</button>
+        <a class="nav-link <?php echo ($activeTab === 'fixed') ? 'active' : ''; ?>" id="fixed-tab" data-bs-toggle="tab" href="expenses.php?tab=fixed" data-bs-target="#fixed" role="tab" aria-controls="fixed" aria-selected="<?php echo ($activeTab === 'fixed') ? 'true' : 'false'; ?>">הוצאות קבועות</a>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link <?php echo ($activeTab === 'regular') ? 'active' : ''; ?>" id="regular-tab" data-bs-toggle="tab" data-bs-target="#regular" type="button" role="tab" aria-controls="regular" aria-selected="<?php echo ($activeTab === 'regular') ? 'true' : 'false'; ?>">הוצאות רגילות</button>
+        <a class="nav-link <?php echo ($activeTab === 'regular') ? 'active' : ''; ?>" id="regular-tab" data-bs-toggle="tab" href="expenses.php?tab=regular" data-bs-target="#regular" role="tab" aria-controls="regular" aria-selected="<?php echo ($activeTab === 'regular') ? 'true' : 'false'; ?>">הוצאות רגילות</a>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link <?php echo ($activeTab === 'combined') ? 'active' : ''; ?>" id="combined-tab" data-bs-toggle="tab" data-bs-target="#combined" type="button" role="tab" aria-controls="combined" aria-selected="<?php echo ($activeTab === 'combined') ? 'true' : 'false'; ?>">סיכום שנתי</button>
+        <a class="nav-link <?php echo ($activeTab === 'combined') ? 'active' : ''; ?>" id="combined-tab" data-bs-toggle="tab" href="expenses.php?tab=combined" data-bs-target="#combined" role="tab" aria-controls="combined" aria-selected="<?php echo ($activeTab === 'combined') ? 'true' : 'false'; ?>">סיכום שנתי</a>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link <?php echo ($activeTab === 'dashboard') ? 'active' : ''; ?>" id="dashboard-tab" data-bs-toggle="tab" data-bs-target="#dashboard" type="button" role="tab" aria-controls="dashboard" aria-selected="<?php echo ($activeTab === 'dashboard') ? 'true' : 'false'; ?>">דשבורד</button>
+        <a class="nav-link <?php echo ($activeTab === 'dashboard') ? 'active' : ''; ?>" id="dashboard-tab" data-bs-toggle="tab" href="expenses.php?tab=dashboard" data-bs-target="#dashboard" role="tab" aria-controls="dashboard" aria-selected="<?php echo ($activeTab === 'dashboard') ? 'true' : 'false'; ?>">דשבורד</a>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link <?php echo ($activeTab === 'data') ? 'active' : ''; ?>" id="data-tab" data-bs-toggle="tab" data-bs-target="#data" type="button" role="tab" aria-controls="data" aria-selected="<?php echo ($activeTab === 'data') ? 'true' : 'false'; ?>">נתונים</button>
+        <a class="nav-link <?php echo ($activeTab === 'data') ? 'active' : ''; ?>" id="data-tab" data-bs-toggle="tab" href="expenses.php?tab=data" data-bs-target="#data" role="tab" aria-controls="data" aria-selected="<?php echo ($activeTab === 'data') ? 'true' : 'false'; ?>">נתונים</a>
     </li>
 </ul>
 </div>
@@ -526,20 +729,27 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
 <div class="content-body">
 <div class="tab-content" id="expensesTabsContent">
     <div class="tab-pane fade <?php echo ($activeTab === 'fixed') ? 'show active' : ''; ?>" id="fixed" role="tabpanel" aria-labelledby="fixed-tab">
-        <h3>הוצאות קבועות</h3>
-        <div class="tab-action-bar">
-            <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addExpenseModal" onclick="setModal('fixed')">הוסף הוצאה</button>
+        <div class="table-action-bar">
+            <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addExpenseModal" onclick="setModal('fixed')">הוסף הוצאה</button>
             <form method="post" style="display: inline;">
                 <input type="hidden" name="action" value="copy_fixed">
-                <button type="submit" class="btn btn-secondary mb-3">העתק הוצאות קבועות לחודש זה לסיכום</button>
+                <button type="submit" class="btn btn-brand">העתק הוצאות לסיכום</button>
             </form>
-            <?php echo renderImportExportButtons('import_fixed', 'export_fixed'); ?>
+            <form method="post" style="display: inline; margin-inline-start: 8px;">
+                <input type="hidden" name="action" value="bulk_set_fixed_month">
+                <input type="hidden" name="current_tab" value="fixed">
+                <label class="form-label" for="bulk_fixed_month" style="margin-inline-end:6px;"></label>
+                <input type="month" id="bulk_fixed_month" name="target_month" class="form-control d-inline-block" style="width:auto; display:inline-block; vertical-align:middle;" required>
+                <button type="submit" class="btn btn-brand" onclick="return confirm('האם לעדכן את חודש התאריך לכל השורות המוצגות בטבלת הוצאות קבועות?');">עדכן חודש</button>
+            </form>
+            <?php echo renderImportExportButtons('import_fixed', 'export_fixed', 'fixedTable'); ?>
         </div>
         <div class="card">
-            <div class="card-body p-0 table-scroll">
-                <table class="table table-striped mb-0">
-                    <?php echo renderExpensesTableHead(); ?>
-                    <tbody>
+            <div class="card-body">
+                <div class="table-scroll">
+                    <table id="fixedTable" class="table table-striped mb-0">
+                        <?php echo renderExpensesTableHead(); ?>
+                        <tbody>
                 <?php
                 $stmt = $pdo->prepare("SELECT * FROM fixed_expenses{$dateFilterSql} ORDER BY date DESC");
                 $stmt->execute($dateFilterParams);
@@ -548,22 +758,23 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     echo renderExpenseRow($row, 'fixed', $deleteForm, false, true);
                 }
                 ?>
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
     <div class="tab-pane fade <?php echo ($activeTab === 'regular') ? 'show active' : ''; ?>" id="regular" role="tabpanel" aria-labelledby="regular-tab">
-        <h3>הוצאות רגילות</h3>
-        <div class="tab-action-bar">
-            <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addExpenseModal" onclick="setModal('regular')">הוסף הוצאה</button>
-            <?php echo renderImportExportButtons('import_regular', 'export_regular'); ?>
+        <div class="table-action-bar">
+            <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addExpenseModal" onclick="setModal('regular')">הוסף הוצאה</button>
+            <?php echo renderImportExportButtons('import_regular', 'export_regular', 'regularTable'); ?>
         </div>
         <div class="card">
-            <div class="card-body p-0 table-scroll">
-                <table class="table table-striped mb-0">
-                    <?php echo renderExpensesTableHead(); ?>
-                    <tbody>
+            <div class="card-body">
+                <div class="table-scroll">
+                    <table id="regularTable" class="table table-striped mb-0">
+                        <?php echo renderExpensesTableHead(); ?>
+                        <tbody>
                 <?php
                 $stmt = $pdo->prepare("SELECT * FROM regular_expenses{$dateFilterSql} ORDER BY date DESC");
                 $stmt->execute($dateFilterParams);
@@ -572,13 +783,13 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     echo renderExpenseRow($row, 'regular', $deleteForm, false, true);
                 }
                 ?>
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
     <div class="tab-pane fade <?php echo ($activeTab === 'data') ? 'show active' : ''; ?>" id="data" role="tabpanel" aria-labelledby="data-tab">
-        <h3>נתונים</h3>
         <div class="pane-scroll">
         <!-- אגפים -->
         <div class="row mb-4">
@@ -595,13 +806,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <tbody>
                             <?php
                             foreach ($departments as $dept) {
+                                $safeDept = htmlspecialchars($dept, ENT_QUOTES, 'UTF-8');
                                 echo "<tr>
-                                    <td>{$dept}</td>
+                                    <td>{$safeDept}</td>
                                     <td>
                                         <form method='post' style='display: inline;'>
                                             <input type='hidden' name='action' value='delete_department'>
-                                            <input type='hidden' name='delete_item' value='{$dept}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את האגף \\\"{$dept}\\\"\")'>מחק</button>
+                                            <input type='hidden' name='delete_item' value='{$safeDept}'>
+                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את האגף \\\"{$safeDept}\\\"\")'>מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -614,7 +826,7 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     <input type="hidden" name="action" value="add_department">
                     <div class="input-group">
                         <input type="text" class="form-control" name="new_department" placeholder="שם אגף חדש" required>
-                        <button class="btn btn-success" type="submit">הוסף אגף</button>
+                        <button class="btn btn-brand" type="submit">הוסף אגף</button>
                     </div>
                 </form>
             </div>
@@ -633,13 +845,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <tbody>
                             <?php
                             foreach ($categories as $cat) {
+                                $safeCat = htmlspecialchars($cat, ENT_QUOTES, 'UTF-8');
                                 echo "<tr>
-                                    <td>{$cat}</td>
+                                    <td>{$safeCat}</td>
                                     <td>
                                         <form method='post' style='display: inline;'>
                                             <input type='hidden' name='action' value='delete_category'>
-                                            <input type='hidden' name='delete_item' value='{$cat}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את הקטגוריה \\\"{$cat}\\\"\")'>מחק</button>
+                                            <input type='hidden' name='delete_item' value='{$safeCat}'>
+                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את הקטגוריה \\\"{$safeCat}\\\"\")'>מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -652,7 +865,7 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     <input type="hidden" name="action" value="add_category">
                     <div class="input-group">
                         <input type="text" class="form-control" name="new_category" placeholder="שם קטגוריה חדשה" required>
-                        <button class="btn btn-success" type="submit">הוסף קטגוריה</button>
+                        <button class="btn btn-brand" type="submit">הוסף קטגוריה</button>
                     </div>
                 </form>
             </div>
@@ -676,14 +889,16 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                             $expenseTypesQuery = $pdo->query("SELECT c.name as category, et.name as type FROM categories c LEFT JOIN expense_types et ON c.id = et.category_id ORDER BY c.name, et.name");
                             while ($row = $expenseTypesQuery->fetch()) {
                                 if ($row['type']) {
+                                    $catSafe = htmlspecialchars($row['category'], ENT_QUOTES, 'UTF-8');
+                                    $typeSafe = htmlspecialchars($row['type'], ENT_QUOTES, 'UTF-8');
                                     echo "<tr>
-                                        <td>{$row['category']}</td>
-                                        <td>{$row['type']}</td>
+                                        <td>{$catSafe}</td>
+                                        <td>{$typeSafe}</td>
                                         <td>
                                             <form method='post' style='display: inline;'>
                                                 <input type='hidden' name='action' value='delete_expense_type'>
-                                                <input type='hidden' name='delete_item' value='{$row['type']}'>
-                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את סוג ההוצאה \\\"{$row['type']}\\\"\")'>מחק</button>
+                                                <input type='hidden' name='delete_item' value='{$typeSafe}'>
+                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את סוג ההוצאה \\\"{$typeSafe}\\\"\")'>מחק</button>
                                             </form>
                                         </td>
                                     </tr>";
@@ -703,7 +918,7 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     </div>
                     <div class="input-group">
                         <input type="text" class="form-control" name="new_expense_type" placeholder="שם סוג הוצאה חדש" required>
-                        <button class="btn btn-success" type="submit">הוסף סוג הוצאה</button>
+                        <button class="btn btn-brand" type="submit">הוסף סוג הוצאה</button>
                     </div>
                 </form>
             </div>
@@ -722,13 +937,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <tbody>
                             <?php
                             foreach ($paid_by_options as $option) {
+                                $safeOpt = htmlspecialchars($option, ENT_QUOTES, 'UTF-8');
                                 echo "<tr>
-                                    <td>{$option}</td>
+                                    <td>{$safeOpt}</td>
                                     <td>
                                         <form method='post' style='display: inline;'>
                                             <input type='hidden' name='action' value='delete_paid_by'>
-                                            <input type='hidden' name='delete_item' value='{$option}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את האפשרות \\\"{$option}\\\"\")'>מחק</button>
+                                            <input type='hidden' name='delete_item' value='{$safeOpt}'>
+                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את האפשרות \\\"{$safeOpt}\\\"\")'>מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -741,7 +957,7 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     <input type="hidden" name="action" value="add_paid_by">
                     <div class="input-group">
                         <input type="text" class="form-control" name="new_paid_by" placeholder="שם חדש" required>
-                        <button class="btn btn-success" type="submit">הוסף אפשרות</button>
+                        <button class="btn btn-brand" type="submit">הוסף אפשרות</button>
                     </div>
                 </form>
             </div>
@@ -762,13 +978,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <tbody>
                             <?php
                             foreach ($from_accounts as $account) {
+                                $safeAcc = htmlspecialchars($account, ENT_QUOTES, 'UTF-8');
                                 echo "<tr>
-                                    <td>{$account}</td>
+                                    <td>{$safeAcc}</td>
                                     <td>
                                         <form method='post' style='display: inline;'>
                                             <input type='hidden' name='action' value='delete_from_account'>
-                                            <input type='hidden' name='delete_item' value='{$account}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את החשבון \\\"{$account}\\\"\")'>מחק</button>
+                                            <input type='hidden' name='delete_item' value='{$safeAcc}'>
+                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את החשבון \\\"{$safeAcc}\\\"\")'>מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -781,7 +998,44 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     <input type="hidden" name="action" value="add_from_account">
                     <div class="input-group">
                         <input type="text" class="form-control" name="new_from_account" placeholder="שם חדש" required>
-                        <button class="btn btn-success" type="submit">הוסף חשבון</button>
+                        <button class="btn btn-brand" type="submit">הוסף חשבון</button>
+                    </div>
+                </form>
+            </div>
+            <div class="col-md-6">
+                <h5>חנויות</h5>
+                <div class="table-scroll" style="max-height: 300px;">
+                    <table class="table table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>שם חנות</th>
+                                <th>פעולות</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            foreach ($stores as $store) {
+                                $safeStore = htmlspecialchars($store, ENT_QUOTES, 'UTF-8');
+                                echo "<tr>
+                                    <td>{$safeStore}</td>
+                                    <td>
+                                        <form method='post' style='display: inline;'>
+                                            <input type='hidden' name='action' value='delete_store'>
+                                            <input type='hidden' name='delete_item' value='{$safeStore}'>
+                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את החנות \\\"{$safeStore}\\\"\")'>מחק</button>
+                                        </form>
+                                    </td>
+                                </tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+                <form method="post" class="mt-3">
+                    <input type="hidden" name="action" value="add_store">
+                    <div class="input-group">
+                        <input type="text" class="form-control" name="new_store" placeholder="שם חנות חדשה" required>
+                        <button class="btn btn-brand" type="submit">הוסף חנות</button>
                     </div>
                 </form>
             </div>
@@ -789,15 +1043,15 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
         </div>
     </div>
     <div class="tab-pane fade <?php echo ($activeTab === 'combined') ? 'show active' : ''; ?>" id="combined" role="tabpanel" aria-labelledby="combined-tab">
-        <h3>סיכום שנתי כל ההוצאות</h3>
-        <div class="tab-action-bar">
-            <?php echo renderImportExportButtons('import_summary', 'export_summary'); ?>
+        <div class="table-action-bar">
+            <?php echo renderImportExportButtons('import_summary', 'export_summary', 'combinedTable'); ?>
         </div>
         <div class="card">
-            <div class="card-body p-0 table-scroll">
-                <table id="combinedTable" class="table table-striped mb-0">
-                    <?php echo renderExpensesTableHead(true); ?>
-                    <tbody>
+            <div class="card-body">
+                <div class="table-scroll">
+                    <table id="combinedTable" class="table table-striped mb-0">
+                        <?php echo renderExpensesTableHead(true); ?>
+                        <tbody>
                 <?php
                 $combinedSql = "
                     SELECT id, date, for_what, store, amount, department, category, expense_type, paid_by, from_account, invoice_copy, 'קבועה' as source
@@ -811,16 +1065,17 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                 $stmt->execute($combinedDateFilterParams);
                 while ($row = $stmt->fetch()) {
                     $deleteForm = renderDeleteForm('delete_combined', $row['id'], 'combined', ['source' => $row['source']]);
-                    echo renderExpenseRow($row, '', $deleteForm, true, false);
+                    $typeForEdit = ($row['source'] === 'קבועה') ? 'summary' : 'regular';
+                    echo renderExpenseRow($row, $typeForEdit, $deleteForm, true, true);
                 }
                 ?>
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
     <div class="tab-pane fade <?php echo ($activeTab === 'dashboard') ? 'show active' : ''; ?>" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
-        <h3>דשבורד הוצאות</h3>
         <div class="pane-scroll">
         <div class="row">
             <div class="col-md-6">
@@ -841,8 +1096,11 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                 while ($row = $stmt->fetch()) {
                     $deptRows[] = [$row['department'], $row['total']];
                 }
-                echo renderSimpleTable(['אגף', 'סכום כולל'], $deptRows);
                 ?>
+                <div class="row align-items-center">
+                    <div class="col-md-6 mb-3 mb-md-0"><canvas id="deptChart" height="220"></canvas></div>
+                    <div class="col-md-6"><?php echo renderSimpleTable(['אגף', 'סכום כולל'], $deptRows); ?></div>
+                </div>
             </div>
             <div class="col-md-6">
                 <h4>סיכום לפי קטגוריות</h4>
@@ -862,8 +1120,11 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                 while ($row = $stmt->fetch()) {
                     $categoryRows[] = [$row['category'], $row['total']];
                 }
-                echo renderSimpleTable(['קטגוריה', 'סכום כולל'], $categoryRows);
                 ?>
+                <div class="row align-items-center">
+                    <div class="col-md-6 mb-3 mb-md-0"><canvas id="categoryChart" height="220"></canvas></div>
+                    <div class="col-md-6"><?php echo renderSimpleTable(['קטגוריה', 'סכום כולל'], $categoryRows); ?></div>
+                </div>
             </div>
         </div>
         <div class="row mt-4">
@@ -886,8 +1147,11 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                 while ($row = $stmt->fetch()) {
                     $typeRows[] = [$row['expense_type'], $row['total']];
                 }
-                echo renderSimpleTable(['סוג הוצאה', 'סכום כולל'], $typeRows);
                 ?>
+                <div class="row align-items-center">
+                    <div class="col-md-6 mb-3 mb-md-0"><canvas id="typeChart" height="220"></canvas></div>
+                    <div class="col-md-6"><?php echo renderSimpleTable(['סוג הוצאה', 'סכום כולל'], $typeRows); ?></div>
+                </div>
             </div>
             <div class="col-md-6">
                 <h4>סיכום לפי מקור תשלום</h4>
@@ -907,8 +1171,11 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                 while ($row = $stmt->fetch()) {
                     $fromAccountRows[] = [$row['from_account'], $row['total']];
                 }
-                echo renderSimpleTable(['מקור תשלום', 'סכום כולל'], $fromAccountRows);
                 ?>
+                <div class="row align-items-center">
+                    <div class="col-md-6 mb-3 mb-md-0"><canvas id="fromAccountChart" height="220"></canvas></div>
+                    <div class="col-md-6"><?php echo renderSimpleTable(['מקור תשלום', 'סכום כולל'], $fromAccountRows); ?></div>
+                </div>
             </div>
         </div>
         <div class="row mt-4">
@@ -968,6 +1235,12 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         </div>
                     </div>
                 </div>
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h5>התפלגות כללית</h5>
+                        <canvas id="overallChart" height="260"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
         </div>
@@ -1000,12 +1273,7 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <label for="store" class="form-label">חנות</label>
                         <select class="form-control" id="store" name="store">
                             <option value="">בחר חנות</option>
-                            <?php
-                            $stores = $pdo->query("SELECT name FROM stores ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
-                            foreach ($stores as $store) {
-                                echo "<option value=\"$store\">$store</option>";
-                            }
-                            ?>
+                            <?php foreach ($stores as $store) { $s = htmlspecialchars($store, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$s}\">{$s}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -1016,14 +1284,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <label for="department" class="form-label">אגף</label>
                         <select class="form-control" id="department" name="department">
                             <option value="">בחר אגף</option>
-                            <?php foreach ($departments as $dep) echo "<option value=\"$dep\">$dep</option>"; ?>
+                            <?php foreach ($departments as $dep) { $d = htmlspecialchars($dep, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$d}\">{$d}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
                         <label for="category" class="form-label">קטגוריה</label>
                         <select class="form-control" id="category" name="category" onchange="updateExpenseType()">
                             <option value="">בחר קטגוריה</option>
-                            <?php foreach ($categories as $cat) echo "<option value=\"$cat\">$cat</option>"; ?>
+                            <?php foreach ($categories as $cat) { $c = htmlspecialchars($cat, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$c}\">{$c}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -1036,14 +1304,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <label for="paid_by" class="form-label">שולם ע"י</label>
                         <select class="form-control" id="paid_by" name="paid_by">
                             <option value="">בחר שולם ע&quot;י</option>
-                            <?php foreach ($paid_by_options as $pbo) echo "<option value=\"$pbo\">$pbo</option>"; ?>
+                            <?php foreach ($paid_by_options as $pbo) { $p = htmlspecialchars($pbo, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$p}\">{$p}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
                         <label for="from_account" class="form-label">יצא מ</label>
                         <select class="form-control" id="from_account" name="from_account">
                             <option value="">בחר יצא מ</option>
-                            <?php foreach ($from_accounts as $fa) echo "<option value=\"$fa\">$fa</option>"; ?>
+                            <?php foreach ($from_accounts as $fa) { $f = htmlspecialchars($fa, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$f}\">{$f}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -1052,8 +1320,8 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
-                    <button type="submit" class="btn btn-primary">שמור</button>
+                    <button type="button" class="btn btn-brand-outline" data-bs-dismiss="modal">ביטול</button>
+                    <button type="submit" class="btn btn-brand">שמור</button>
                 </div>
             </form>
         </div>
@@ -1086,12 +1354,7 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <label for="edit_store" class="form-label">חנות</label>
                         <select class="form-control" id="edit_store" name="store">
                             <option value="">בחר חנות</option>
-                            <?php
-                            $stores = $pdo->query("SELECT name FROM stores ORDER BY name")->fetchAll(PDO::FETCH_COLUMN);
-                            foreach ($stores as $store) {
-                                echo "<option value=\"$store\">$store</option>";
-                            }
-                            ?>
+                            <?php foreach ($stores as $store) { $s = htmlspecialchars($store, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$s}\">{$s}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -1102,14 +1365,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <label for="edit_department" class="form-label">אגף</label>
                         <select class="form-control" id="edit_department" name="department">
                             <option value="">בחר אגף</option>
-                            <?php foreach ($departments as $dep) echo "<option value=\"$dep\">$dep</option>"; ?>
+                            <?php foreach ($departments as $dep) { $d = htmlspecialchars($dep, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$d}\">{$d}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
                         <label for="edit_category" class="form-label">קטגוריה</label>
                         <select class="form-control" id="edit_category" name="category" onchange="updateEditExpenseType()">
                             <option value="">בחר קטגוריה</option>
-                            <?php foreach ($categories as $cat) echo "<option value=\"$cat\">$cat</option>"; ?>
+                            <?php foreach ($categories as $cat) { $c = htmlspecialchars($cat, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$c}\">{$c}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -1122,14 +1385,14 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                         <label for="edit_paid_by" class="form-label">שולם ע"י</label>
                         <select class="form-control" id="edit_paid_by" name="paid_by">
                             <option value="">בחר שולם ע&quot;י</option>
-                            <?php foreach ($paid_by_options as $pbo) echo "<option value=\"$pbo\">$pbo</option>"; ?>
+                            <?php foreach ($paid_by_options as $pbo) { $p = htmlspecialchars($pbo, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$p}\">{$p}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
                         <label for="edit_from_account" class="form-label">יצא מ</label>
                         <select class="form-control" id="edit_from_account" name="from_account">
                             <option value="">בחר יצא מ</option>
-                            <?php foreach ($from_accounts as $fa) echo "<option value=\"$fa\">$fa</option>"; ?>
+                            <?php foreach ($from_accounts as $fa) { $f = htmlspecialchars($fa, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$f}\">{$f}</option>"; } ?>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -1139,8 +1402,8 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
-                    <button type="submit" class="btn btn-primary">עדכן</button>
+                    <button type="button" class="btn btn-brand-outline" data-bs-dismiss="modal">ביטול</button>
+                    <button type="submit" class="btn btn-brand">עדכן</button>
                 </div>
             </form>
         </div>
@@ -1165,16 +1428,16 @@ $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'fixed';
                     <p class="text-muted">הקובץ צריך להכיל עמודות: תאריך, עבור, חנות, סכום, אגף, קטגוריה, סוג הוצאה, שולם ע"י, יצא מ, העתק חשבונית</p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
-                    <button type="submit" class="btn btn-success">ייבא</button>
+                    <button type="button" class="btn btn-brand-outline" data-bs-dismiss="modal">ביטול</button>
+                    <button type="submit" class="btn btn-brand">ייבא</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-
-
+<!-- Chart.js for dashboard charts -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 // Initialize page-specific code
 console.log('Expenses page loaded');
@@ -1248,27 +1511,34 @@ function updateEditExpenseType() {
     }
 }
 
-// Initialize DataTable
-if (window.jQuery && $.fn && $.fn.DataTable && $('#combinedTable').length) {
-    $('#combinedTable').DataTable({
-        "language": {
-            "search": "חיפוש:",
-            "lengthMenu": "הצג _MENU_ רשומות בעמוד",
-            "zeroRecords": "לא נמצאו רשומות מתאימות",
-            "info": "מציג _START_ עד _END_ מתוך _TOTAL_ רשומות",
-            "infoEmpty": "אין רשומות להצגה",
-            "infoFiltered": "(מסונן מתוך _MAX_ רשומות)",
-            "paginate": {
-                "first": "ראשון",
-                "last": "אחרון",
-                "next": "הבא",
-                "previous": "קודם"
-            }
-        },
-        "order": [[ 0, "desc" ]],
-        "pageLength": 25
-    });
-}
+// Initialize DataTable when DOM and jQuery are ready
+document.addEventListener('DOMContentLoaded', function () {
+    if (window.jQuery && $.fn && $.fn.DataTable) {
+        const dtOpts = {
+            language: {
+                search: "חיפוש:",
+                lengthMenu: "הצג _MENU_ רשומות בעמוד",
+                zeroRecords: "לא נמצאו רשומות מתאימות",
+                info: "מציג _START_ עד _END_ מתוך _TOTAL_ רשומות",
+                infoEmpty: "אין רשומות להצגה",
+                infoFiltered: "(מסונן מתוך _MAX_ רשומות)",
+                paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "קודם" }
+            },
+            order: [[0, 'desc']],
+            pageLength: 25
+        };
+
+        if ($('#combinedTable').length) {
+            $('#combinedTable').DataTable(dtOpts);
+        }
+        if ($('#fixedTable').length) {
+            $('#fixedTable').DataTable(dtOpts);
+        }
+        if ($('#regularTable').length) {
+            $('#regularTable').DataTable(dtOpts);
+        }
+    }
+});
 
 // Add current_tab to all forms on submit
 document.querySelectorAll('form').forEach(form => {
@@ -1298,6 +1568,111 @@ if (filterForm) {
         }
     });
 }
+
+// Capture current DataTables sort and pass to export forms
+(function() {
+    const headerToCol = {
+        'תאריך': 'date',
+        'עבור': 'for_what',
+        'חנות': 'store',
+        'סכום': 'amount',
+        'אגף': 'department',
+        'קטגוריה': 'category',
+        'סוג הוצאה': 'expense_type',
+        "שולם ע'י": 'paid_by',
+        'יצא מ': 'from_account',
+        'העתק חשבונית': 'invoice_copy',
+        'מקור': 'date'
+    };
+
+    function setOrderInputs(form) {
+        const tableId = form.getAttribute('data-table-id');
+        const orderByInput = form.querySelector('input[name="order_by"]');
+        const orderDirInput = form.querySelector('input[name="order_dir"]');
+        const searchInput = form.querySelector('input[name="search_term"]');
+        let col = 'date';
+        let dir = 'desc';
+        let search = '';
+        if (tableId) {
+            const tableEl = document.getElementById(tableId);
+            if (tableEl && window.jQuery && jQuery.fn && jQuery.fn.dataTable) {
+                try {
+                    const dt = jQuery(tableEl).DataTable();
+                    const order = dt.order();
+                    search = (typeof dt.search === 'function') ? dt.search() : '';
+                    if (order && order.length) {
+                        const idx = order[0][0];
+                        dir = (order[0][1] || 'desc').toLowerCase();
+                        const ths = tableEl.querySelectorAll('thead th');
+                        const headerText = ths[idx] ? ths[idx].textContent.trim() : '';
+                        if (headerText && headerToCol[headerText]) {
+                            col = headerToCol[headerText];
+                        }
+                    }
+                } catch (e) {
+                    // No DataTable instance; keep defaults
+                }
+            }
+        }
+        if (orderByInput) orderByInput.value = col;
+        if (orderDirInput) orderDirInput.value = (dir === 'asc' ? 'asc' : 'desc');
+        if (searchInput) searchInput.value = search;
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('form[data-table-id]')
+            .forEach(form => {
+                form.addEventListener('submit', function() { setOrderInputs(form); });
+            });
+    });
+})();
+
+// Dashboard charts
+(function() {
+    function renderPie(canvasId, rows, titleText) {
+        const el = document.getElementById(canvasId);
+        if (!el || !Array.isArray(rows) || !rows.length) return;
+        const labels = rows.map(r => (r && r[0]) ? String(r[0] || 'לא מוגדר') : 'לא מוגדר');
+        const data = rows.map(r => Number(r && r[1] ? r[1] : 0));
+        const colors = [
+            '#4dc9f6','#f67019','#f53794','#537bc4','#acc236','#166a8f',
+            '#00a950','#58595b','#8549ba','#ffcd56','#36a2eb','#ff9f40'
+        ];
+        const bg = labels.map((_, i) => colors[i % colors.length]);
+        new Chart(el, {
+            type: 'pie',
+            data: { labels, datasets: [{ data, backgroundColor: bg }] },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' }, title: { display: !!titleText, text: titleText } } }
+        });
+    }
+
+    function renderDonut(canvasId, labels, values, titleText) {
+        const el = document.getElementById(canvasId);
+        if (!el) return;
+        const data = Array.isArray(values) ? values.map(v => Number(v || 0)) : [];
+        const colors = ['#36a2eb', '#ff6384'];
+        new Chart(el, {
+            type: 'doughnut',
+            data: { labels, datasets: [{ data, backgroundColor: colors }] },
+            options: { cutout: '55%', responsive: true, plugins: { legend: { position: 'bottom' }, title: { display: !!titleText, text: titleText } } }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const deptRows = <?php echo json_encode(isset($deptRows)?$deptRows:[], JSON_UNESCAPED_UNICODE); ?>;
+        const categoryRows = <?php echo json_encode(isset($categoryRows)?$categoryRows:[], JSON_UNESCAPED_UNICODE); ?>;
+        const typeRows = <?php echo json_encode(isset($typeRows)?$typeRows:[], JSON_UNESCAPED_UNICODE); ?>;
+        const fromAccountRows = <?php echo json_encode(isset($fromAccountRows)?$fromAccountRows:[], JSON_UNESCAPED_UNICODE); ?>;
+        const fixedVal = <?php echo json_encode(isset($fixed)?(float)$fixed:0, JSON_UNESCAPED_UNICODE); ?>;
+        const regularVal = <?php echo json_encode(isset($regular)?(float)$regular:0, JSON_UNESCAPED_UNICODE); ?>;
+
+        renderPie('deptChart', deptRows, 'התפלגות אגפים');
+        renderPie('categoryChart', categoryRows, 'התפלגות קטגוריות');
+        renderPie('typeChart', typeRows, 'התפלגות סוגי הוצאה');
+        renderPie('fromAccountChart', fromAccountRows, 'התפלגות מקורות תשלום');
+        renderDonut('overallChart', ['קבועה','רגילה'], [fixedVal, regularVal], 'התפלגות כללית');
+    });
+})();
 </script>
 
 <?php include '../templates/footer.php'; ?>
