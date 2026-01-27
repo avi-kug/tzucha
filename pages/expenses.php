@@ -388,6 +388,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 deleteInvoiceFile($existingInvoice);
             }
 
+            // If requested to delete the existing invoice and no new file replaces it
+            $deleteInvoice = isset($_POST['delete_invoice_copy']) && $_POST['delete_invoice_copy'] === '1';
+            if ($deleteInvoice) {
+                if (!empty($existingInvoice) && $invoicePath === $existingInvoice) {
+                    deleteInvoiceFile($existingInvoice);
+                }
+                if ($invoicePath === $existingInvoice) {
+                    $invoicePath = '';
+                }
+            }
+
             $data = [
                 'date' => $_POST['date'],
                 'for_what' => $_POST['for_what'],
@@ -1432,6 +1443,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                         <label for="edit_invoice_copy_file" class="form-label">העתק חשבונית (תמונה או PDF)</label>
                         <input type="file" class="form-control" id="edit_invoice_copy_file" name="invoice_copy_file" accept=".jpg,.jpeg,.png,.pdf">
                         <div id="edit_invoice_copy_preview" style="margin-top: 6px;"></div>
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="delete_invoice_copy" name="delete_invoice_copy" value="1">
+                            <label class="form-check-label" for="delete_invoice_copy">מחק העתק חשבונית</label>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1506,14 +1521,32 @@ function editExpense(button) {
     document.getElementById('existing_invoice_copy').value = invoicePath;
     const preview = document.getElementById('edit_invoice_copy_preview');
     if (preview) {
-        preview.innerHTML = invoicePath ? `<a href="${invoicePath}" target="_blank" rel="noopener">צפה בקובץ קיים</a>` : '';
+        if (invoicePath) {
+            preview.innerHTML = `<div class="d-flex align-items-center gap-2">
+                <a href="${invoicePath}" target="_blank" rel="noopener">צפה בקובץ קיים</a>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearExistingInvoice()">מחק</button>
+            </div>`;
+        } else {
+            preview.innerHTML = '';
+        }
     }
+    const delChk = document.getElementById('delete_invoice_copy');
+    if (delChk) delChk.checked = false;
     document.getElementById('edit_department').value = button.getAttribute('data-department');
     document.getElementById('edit_category').value = button.getAttribute('data-category');
     updateEditExpenseType();
     document.getElementById('edit_expense_type').value = button.getAttribute('data-expense_type');
     document.getElementById('edit_paid_by').value = button.getAttribute('data-paid_by');
     document.getElementById('edit_from_account').value = button.getAttribute('data-from_account');
+}
+
+function clearExistingInvoice() {
+    const delChk = document.getElementById('delete_invoice_copy');
+    if (delChk) delChk.checked = true;
+    const preview = document.getElementById('edit_invoice_copy_preview');
+    if (preview) preview.innerHTML = '<span class="text-muted">לא מצורף קובץ</span>';
+    const fileInput = document.getElementById('edit_invoice_copy_file');
+    if (fileInput) fileInput.value = '';
 }
 
 function updateExpenseType() {
