@@ -1,0 +1,21 @@
+# Composer dependencies
+/vendor/
+/composer.phar
+
+# Environment and secrets
+/.env
+/config/db.php
+
+# Uploads and generated files
+/uploads/
+/public/cache/
+public/*.log
+
+# Editor/IDE settings
+/.vscode/
+/.idea/
+*.code-workspace
+
+# OS-generated files
+Thumbs.db
+.DS_Store
