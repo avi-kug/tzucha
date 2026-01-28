@@ -6,7 +6,8 @@
     <title>מערכת Tzucha</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
-    <link rel="stylesheet" href="../assets/css/style.css?v=20260127">
+    <?php $cssV = @filemtime(__DIR__ . '/../assets/css/style.css') ?: '20260128'; ?>
+    <link rel="stylesheet" href="../assets/css/style.css?v=<?php echo $cssV; ?>">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 </head>
@@ -19,7 +20,7 @@
                     <a class="nav-link" href="/tzucha/index.php">ראשי</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="/tzucha/pages/people.php">אנשים</a>
+                    <a class="nav-link" href="/tzucha/pages/people.php">פרטים מלאים</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="/tzucha/pages/supports.php">תמיכות</a>

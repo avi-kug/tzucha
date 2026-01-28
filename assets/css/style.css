@@ -70,12 +70,11 @@ body {
     top: 0;
     z-index: 1040;
     background: #f8f9fa;
-    padding: 12px 24px 8px;
+    padding: 6px 24px 4px;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 }
 
-.sticky-toolbar .nav-tabs {
-}
+
 
 .sticky-toolbar .nav-tabs .nav-link {
     cursor: pointer;
@@ -110,6 +109,21 @@ body {
     flex-direction: column;
 }
 
+/* Fixed-height card variant: keeps scrollbars inside the card */
+.fixed-card {
+    flex: 0 0 auto !important;
+    height: 80vh; /* increased slightly per request */
+    min-height: 420px;
+}
+.fixed-card .card-body {
+    display: flex;
+    flex-direction: column;
+}
+.fixed-card .table-scroll {
+    flex: 1 1 auto;
+    overflow: auto; /* ensures horizontal scrollbar appears at the bottom of the card */
+}
+
 .tab-pane .card .card-body {
     flex: 1;
     min-height: 0;
@@ -139,6 +153,22 @@ body {
     height: 100%;
     max-height: none;
     width: auto;
+}
+
+/* Top horizontal scroller synced with table-scroll */
+.table-hscroll {
+    position: sticky;
+    top: 0; /* sticks within the scrolling pane */
+    z-index: 5;
+    height: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: #fff;
+    border-bottom: 1px solid #eee;
+    margin-bottom: 6px;
+}
+.table-hscroll-inner {
+    height: 1px; /* minimal height track */
 }
 
 .pane-scroll {
@@ -281,31 +311,59 @@ footer {
 #combinedTable.dataTable thead .sorting_desc,
 #combinedTable.dataTable thead .sorting_asc_disabled,
 #combinedTable.dataTable thead .sorting_desc_disabled {
-    background-position: right 6px center !important; /* move icon to the far right */
+    background-position: right 6px center !important;
     background-repeat: no-repeat !important;
-    background-size: 12px 12px !important; /* ensure consistent icon size */
-    padding-right: 28px !important; /* larger space so icon never overlaps title */
+    background-size: 12px 12px !important;
+    padding-right: 28px !important;
     padding-left: 8px !important;
 }
 
-/* Apply same alignment and sort icon positioning to fixed and regular tables */
-#fixedTable.dataTable thead th,
-#fixedTable.dataTable thead td,
-#regularTable.dataTable thead th,
-#regularTable.dataTable thead td {
+/* People table: align headers right and move sort icon */
+#peopleTable.dataTable thead th,
+#peopleTable.dataTable thead td {
     text-align: right !important;
 }
 
-#fixedTable.dataTable thead .sorting,
-#fixedTable.dataTable thead .sorting_asc,
-#fixedTable.dataTable thead .sorting_desc,
-#fixedTable.dataTable thead .sorting_asc_disabled,
-#fixedTable.dataTable thead .sorting_desc_disabled,
-#regularTable.dataTable thead .sorting,
-#regularTable.dataTable thead .sorting_asc,
-#regularTable.dataTable thead .sorting_desc,
-#regularTable.dataTable thead .sorting_asc_disabled,
-#regularTable.dataTable thead .sorting_desc_disabled {
+#peopleTable.dataTable thead .sorting,
+#peopleTable.dataTable thead .sorting_asc,
+#peopleTable.dataTable thead .sorting_desc,
+#peopleTable.dataTable thead .sorting_asc_disabled,
+#peopleTable.dataTable thead .sorting_desc_disabled {
+    background-position: right 6px center !important;
+    background-repeat: no-repeat !important;
+    background-size: 12px 12px !important;
+    padding-right: 28px !important;
+    padding-left: 8px !important;
+}
+
+/* Wider, scrollable columns and nowrap for people table */
+#peopleTable th,
+#peopleTable td {
+    white-space: nowrap;
+}
+
+#peopleTable thead th {
+    min-width: 120px; /* base width, resizable via JS */
+}
+
+/* Align RTL headers and sort icon for amarchal/gizbar lists */
+#amarchalTable.dataTable thead th,
+#amarchalTable.dataTable thead td,
+#gizbarTable.dataTable thead th,
+#gizbarTable.dataTable thead td {
+    text-align: right !important;
+}
+
+#amarchalTable.dataTable thead .sorting,
+#amarchalTable.dataTable thead .sorting_asc,
+#amarchalTable.dataTable thead .sorting_desc,
+#amarchalTable.dataTable thead .sorting_asc_disabled,
+#amarchalTable.dataTable thead .sorting_desc_disabled,
+#gizbarTable.dataTable thead .sorting,
+#gizbarTable.dataTable thead .sorting_asc,
+#gizbarTable.dataTable thead .sorting_desc,
+#gizbarTable.dataTable thead .sorting_asc_disabled,
+#gizbarTable.dataTable thead .sorting_desc_disabled {
     background-position: right 6px center !important;
     background-repeat: no-repeat !important;
     background-size: 12px 12px !important;

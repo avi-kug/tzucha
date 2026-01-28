@@ -726,10 +726,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
 @setcookie('expenses_tab', $activeTab, time() + 31536000, '/');
 ?>
 <div class="sticky-toolbar">
-    <form method="get" class="row g-2 align-items-end mb-3" id="filterForm">
+    <form method="get" class="row g-2 align-items-end mb-1" id="filterForm">
         <input type="hidden" name="tab" id="filter_tab" value="<?php echo htmlspecialchars($activeTab, ENT_QUOTES, 'UTF-8'); ?>">
         <div class="col-auto">
-            <label for="filter_month" class="form-label">חודש</label>
+            <label for="filter_month" class="form-label visually-hidden">חודש</label>
             <select class="form-select" id="filter_month" name="month">
                 <option value="">כל החודשים</option>
                 <?php for ($m = 1; $m <= 12; $m++): ?>
@@ -738,7 +738,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
             </select>
         </div>
         <div class="col-auto">
-            <label for="filter_year" class="form-label">שנה</label>
+            <label for="filter_year" class="form-label visually-hidden">שנה</label>
             <select class="form-select" id="filter_year" name="year">
                 <option value="">כל השנים</option>
                 <?php foreach ($availableYears as $year): ?>
