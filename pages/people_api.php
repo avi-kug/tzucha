@@ -131,6 +131,26 @@ try {
             
             echo json_encode(['success' => true, 'message' => 'Deleted successfully']);
             break;
+
+        case 'delete_bulk':
+            $ids = $_POST['ids'] ?? [];
+            if (is_string($ids)) {
+                $decoded = json_decode($ids, true);
+                if (is_array($decoded)) {
+                    $ids = $decoded;
+                }
+            }
+
+            if (!is_array($ids) || count($ids) === 0) {
+                throw new Exception('Missing IDs');
+            }
+
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $pdo->prepare("DELETE FROM people WHERE id IN ($placeholders)");
+            $stmt->execute($ids);
+
+            echo json_encode(['success' => true, 'message' => 'Deleted successfully']);
+            break;
             
         default:
             throw new Exception('Invalid action');
