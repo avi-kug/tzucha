@@ -10,6 +10,7 @@ ini_set('default_charset', 'UTF-8');
 
 require_once '../config/db.php';
 require_once '../vendor/autoload.php';
+require_once '../config/auth.php';
 
 session_start();
 $message = '';
@@ -19,10 +20,17 @@ $message = $_SESSION['message'];
     unset($_SESSION['message']);
 }
 
+function getInvoiceStorageDir()
+{
+    $root = dirname(__DIR__, 2); // c:\xampp\htdocs
+    $base = dirname($root) . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'tzucha' . DIRECTORY_SEPARATOR . 'invoices' . DIRECTORY_SEPARATOR;
+    return $base;
+}
+
 function handleInvoiceUpload($fileInputName, $existingPath = '')
 {
     if (!isset($_FILES[$fileInputName]) || $_FILES[$fileInputName]['error'] === UPLOAD_ERR_NO_FILE) {
-        return $existingPath;
+        return $existingPath ? basename((string)$existingPath) : '';
     }
 
     if ($_FILES[$fileInputName]['error'] !== UPLOAD_ERR_OK) {
@@ -52,9 +60,7 @@ function handleInvoiceUpload($fileInputName, $existingPath = '')
     }
 
     $newName = uniqid('invoice_', true) . '.' . $ext;
-    $uploadDirAbs = __DIR__ . '/../uploads/invoices/';
-    $uploadDirRel = '/tzucha/uploads/invoices/';
-
+    $uploadDirAbs = getInvoiceStorageDir();
     if (!is_dir($uploadDirAbs)) {
         mkdir($uploadDirAbs, 0775, true);
     }
@@ -64,7 +70,7 @@ function handleInvoiceUpload($fileInputName, $existingPath = '')
         throw new Exception('לא ניתן לשמור את הקובץ שהועלה.');
     }
 
-    return $uploadDirRel . $newName;
+    return $newName;
 }
 
 // Safely delete an existing invoice file from uploads/invoices
@@ -73,7 +79,7 @@ function deleteInvoiceFile($path)
     if (!$path) {
         return;
     }
-    $uploadDirAbs = __DIR__ . '/../uploads/invoices/';
+    $uploadDirAbs = getInvoiceStorageDir();
     $file = $uploadDirAbs . basename((string)$path);
     if (is_file($file) && file_exists($file)) {
         @unlink($file);
@@ -83,6 +89,11 @@ function deleteInvoiceFile($path)
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action'])) {
+        if (!csrf_validate()) {
+            $_SESSION['message'] = 'פג תוקף הטופס, נסה שוב.';
+            header('Location: expenses.php');
+            exit;
+        }
         $action = $_POST['action'];
         if ($action == 'copy_fixed') {
             $currentMonth = date('Y-m');
@@ -561,8 +572,8 @@ function formatInvoiceCopy($path)
     if (!$path) {
         return '';
     }
-    $safePath = htmlspecialchars($path, ENT_QUOTES, 'UTF-8');
-    return "<a href=\"{$safePath}\" target=\"_blank\" rel=\"noopener\">צפה</a>";
+    $safeFile = htmlspecialchars(basename((string)$path), ENT_QUOTES, 'UTF-8');
+    return "<a href=\"/tzucha/pages/download_invoice.php?file={$safeFile}\" target=\"_blank\" rel=\"noopener\">צפה</a>";
 }
 
 function renderExpenseRow($row, $type, $deleteForm, $includeSource = false, $includeEdit = true)

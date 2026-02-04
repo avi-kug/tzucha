@@ -4,14 +4,66 @@ ini_set('display_errors', 1);
 require_once '../config/db.php';
 require_once '../vendor/autoload.php';
 session_start();
+require_once '../config/auth.php';
+auth_require_login($pdo);
+auth_require_permission('people');
+$canEdit = auth_role() !== 'viewer';
+
+function validateExcelUpload($file) {
+    $allowedExt = ['xlsx','xls'];
+    $maxSize = 10 * 1024 * 1024; // 10MB
+    $name = $file['name'] ?? '';
+    $tmp = $file['tmp_name'] ?? '';
+    $size = $file['size'] ?? 0;
+    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowedExt, true)) {
+        throw new Exception('מותר להעלות רק קבצי Excel (.xlsx/.xls).');
+    }
+    if ($size > $maxSize) {
+        throw new Exception('הקובץ גדול מדי (מקסימום 10MB).');
+    }
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($tmp);
+    $allowedMime = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/octet-stream'
+    ];
+    if (!in_array($mime, $allowedMime, true)) {
+        throw new Exception('סוג הקובץ אינו נתמך.');
+    }
+}
 
 // Handle Import/Export for People before any HTML output
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    if (!csrf_validate()) {
+        $_SESSION['message'] = 'פג תוקף הטופס, נסה שוב.';
+        header('Location: people.php');
+        exit;
+    }
     $action = $_POST['action'];
+    if (!$canEdit && in_array($action, ['import_people', 'import_amarchal_list', 'import_gizbar_list'], true)) {
+        $_SESSION['message'] = 'אין הרשאה לייבוא נתונים.';
+        header('Location: people.php');
+        exit;
+    }
     if ($action === 'export_people') {
-        // Export all people to Excel
-        $stmt = $pdo->query("SELECT * FROM people ORDER BY family_name, first_name");
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // Export people to Excel (optionally filtered/ordered)
+        $exportIds = $_POST['export_ids'] ?? '';
+        if (!empty($exportIds)) {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $exportIds))));
+            if (!empty($ids)) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $stmt = $pdo->prepare("SELECT * FROM people WHERE id IN ($placeholders) ORDER BY FIELD(id, $placeholders)");
+                $stmt->execute(array_merge($ids, $ids));
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $rows = [];
+            }
+        } else {
+            $stmt = $pdo->query("SELECT * FROM people ORDER BY family_name, first_name");
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         $headersHe = [
             'אמרכל','גזבר','מזהה תוכנה','מס תורם','חתן הר\'ר','משפחה','שם','שם לדואר','שם ומשפחה ביחד',
@@ -54,10 +106,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $nameField = $isAmarchal ? 'amarchal' : 'gizbar';
         $titlePrefix = $isAmarchal ? 'amarchal_list_' : 'gizbar_list_';
 
-        $query = $isAmarchal
-            ? "SELECT p.* FROM people p INNER JOIN (SELECT amarchal, MIN(id) AS min_id FROM people WHERE amarchal IS NOT NULL AND amarchal <> '' GROUP BY amarchal) t ON p.id = t.min_id ORDER BY p.amarchal"
-            : "SELECT p.* FROM people p INNER JOIN (SELECT gizbar, MIN(id) AS min_id FROM people WHERE gizbar IS NOT NULL AND gizbar <> '' GROUP BY gizbar) t ON p.id = t.min_id ORDER BY p.gizbar";
-        $rows = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
+        $exportIds = $_POST['export_ids'] ?? '';
+        if (!empty($exportIds)) {
+            $ids = array_values(array_filter(array_map('intval', explode(',', $exportIds))));
+            if (!empty($ids)) {
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                $stmt = $pdo->prepare("SELECT * FROM people WHERE id IN ($placeholders) ORDER BY FIELD(id, $placeholders)");
+                $stmt->execute(array_merge($ids, $ids));
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $rows = [];
+            }
+        } else {
+            $query = $isAmarchal
+                ? "SELECT p.* FROM people p INNER JOIN (SELECT amarchal, MIN(id) AS min_id FROM people WHERE amarchal IS NOT NULL AND amarchal <> '' GROUP BY amarchal) t ON p.id = t.min_id ORDER BY p.amarchal"
+                : "SELECT p.* FROM people p INNER JOIN (SELECT gizbar, MIN(id) AS min_id FROM people WHERE gizbar IS NOT NULL AND gizbar <> '' GROUP BY gizbar) t ON p.id = t.min_id ORDER BY p.gizbar";
+            $rows = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         $headersHe = [
             $isAmarchal ? 'אמרכל' : 'גזבר',
@@ -70,6 +135,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             'פלאפון',
             'מייל'
         ];
+        if (!$isAmarchal) {
+            $headersHe[] = 'אמרכל';
+        }
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -93,6 +161,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $sheet->setCellValueByColumnAndRow(7, $r, $row['phone'] ?? '');
             $sheet->setCellValueByColumnAndRow(8, $r, $row['husband_mobile'] ?? '');
             $sheet->setCellValueByColumnAndRow(9, $r, $email);
+            if (!$isAmarchal) {
+                $sheet->setCellValueByColumnAndRow(10, $r, $row['amarchal'] ?? '');
+            }
             $r++;
         }
 
@@ -109,6 +180,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $title = $isAmarchal ? 'אמרכלים' : 'גזברים';
         if (!isset($_FILES['excel_file']) || $_FILES['excel_file']['error'] !== UPLOAD_ERR_OK) {
             $_SESSION['message'] = 'שגיאה בהעלאת הקובץ. נא לנסות שוב.';
+            header('Location: people.php');
+            exit;
+        }
+        try {
+            validateExcelUpload($_FILES['excel_file']);
+        } catch (Exception $e) {
+            $_SESSION['message'] = nl2br(htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8'));
             header('Location: people.php');
             exit;
         }
@@ -223,6 +301,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         // Import people from Excel
         if (!isset($_FILES['excel_file']) || $_FILES['excel_file']['error'] !== UPLOAD_ERR_OK) {
             $_SESSION['message'] = 'שגיאה בהעלאת הקובץ. נא לנסות שוב.';
+            header('Location: people.php');
+            exit;
+        }
+        try {
+            validateExcelUpload($_FILES['excel_file']);
+        } catch (Exception $e) {
+            $_SESSION['message'] = nl2br(htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8'));
             header('Location: people.php');
             exit;
         }
@@ -376,6 +461,30 @@ include '../templates/header.php';
 .select-col input[type="checkbox"] { width: 14px; height: 14px; margin: 0 auto; display: block; }
 #peopleTable th.select-col, #peopleTable td.select-col { width: 44px !important; min-width: 44px !important; max-width: 44px !important; text-align: center; vertical-align: middle; }
 .duplicate-name, .duplicate-name td { background-color: #f8d7da !important; }
+.dataTables_wrapper .dt-buttons { float: left; }
+#peopleTable, #amarchalTable, #gizbarTable { table-layout: auto; }
+#peopleTable th.action-col,
+#peopleTable td.action-cell {
+    position: sticky;
+    left: 0;
+    inset-inline-start: 0;
+    z-index: 2;
+    background: transparent;
+}
+#peopleTable td.action-cell {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+#peopleTable td.action-cell .row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+}
 </style>
 <?php if (!empty($message)): ?>
 <!-- Summary Message Modal -->
@@ -416,6 +525,15 @@ $gizbarRows = $pdo->query("SELECT p.* FROM people p INNER JOIN (SELECT gizbar, M
 $peopleList = $pdo->query("SELECT id, full_name, family_name, first_name FROM people ORDER BY family_name, first_name")->fetchAll(PDO::FETCH_ASSOC);
 $amarchalim = $pdo->query("SELECT DISTINCT amarchal FROM people WHERE amarchal IS NOT NULL AND amarchal <> '' ORDER BY amarchal")->fetchAll(PDO::FETCH_COLUMN);
 $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT NULL AND gizbar <> '' ORDER BY gizbar")->fetchAll(PDO::FETCH_COLUMN);
+$gizbarToAmarchal = [];
+$gizbarMapRows = $pdo->query("SELECT gizbar, amarchal FROM people WHERE gizbar IS NOT NULL AND gizbar <> '' AND amarchal IS NOT NULL AND amarchal <> '' ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+foreach ($gizbarMapRows as $row) {
+    $g = trim((string)($row['gizbar'] ?? ''));
+    $a = trim((string)($row['amarchal'] ?? ''));
+    if ($g !== '' && $a !== '' && !isset($gizbarToAmarchal[$g])) {
+        $gizbarToAmarchal[$g] = $a;
+    }
+}
 ?>
 
 <ul class="nav nav-tabs mb-2" id="peopleTabs" role="tablist">
@@ -435,15 +553,20 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         <h2>רשימת אנשים</h2>
         <div class="card fixed-card">
             <div class="card-body">
-                <div class="table-action-bar">
-                    <button type="button" class="btn btn-brand" id="addPersonBtn">הוסף חדש</button>
-                    <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#importPeopleModal">ייבא אקסל</button>
-                    <form method="post" style="display:inline; margin:0;">
+                <div class="table-action-bar" id="peopleActionBar">
+                    <?php if ($canEdit): ?>
+                        <button type="button" class="btn btn-brand" id="addPersonBtn">הוסף חדש</button>
+                        <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#importPeopleModal">ייבא אקסל</button>
+                    <?php endif; ?>
+                    <form method="post" style="display:inline; margin:0;" id="exportPeopleForm">
                         <input type="hidden" name="action" value="export_people">
+                        <input type="hidden" name="export_ids" value="">
                         <button type="submit" class="btn btn-brand">ייצוא אקסל</button>
                     </form>
                     <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#printPdfModal"><i class="bi bi-file-pdf"></i> הדפסה ל-PDF</button>
-                    <button type="button" class="btn btn-danger" id="deleteSelectedBtn" disabled>מחיקת מסומנים</button>
+                    <?php if ($canEdit): ?>
+                        <button type="button" class="btn btn-danger" id="deleteSelectedBtn" disabled>מחיקת מסומנים</button>
+                    <?php endif; ?>
                 </div>
                 <div class="table-scroll">
                     <table id="peopleTable" class="table table-striped mb-0" style="width:100%">
@@ -481,7 +604,11 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                         <thead class="table-dark">
                             <tr>
                                 <th style="width: 28px;" class="text-center select-col">
-                                    <input type="checkbox" id="selectAllRows">
+                                    <?php if ($canEdit): ?>
+                                        <input type="checkbox" id="selectAllRows">
+                                    <?php else: ?>
+                                        &nbsp;
+                                    <?php endif; ?>
                                 </th>
                                 <th>אמרכל</th>
                                 <th>גזבר</th>
@@ -510,11 +637,12 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                                 <th>אלפון</th>
                                 <th>שליחת הודעות</th>
                                 <th>שינוי אחרון</th>
-                                <th>פעולות</th>
+                                <th class="action-col">פעולות</th>
                             </tr>
                         </thead>
                         <tbody>
                                 <?php
+                                $cellClass = $canEdit ? 'editable' : '';
                                 $dupStmt = $pdo->query("SELECT full_name FROM people WHERE full_name IS NOT NULL AND full_name <> '' GROUP BY full_name HAVING COUNT(*) > 1");
                                 $dupKeys = [];
                                 foreach ($dupStmt->fetchAll(PDO::FETCH_ASSOC) as $dupRow) {
@@ -528,37 +656,47 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                                     $rowKey = mb_strtolower(trim((string)($row['full_name'] ?? '')));
                                     $dupClass = isset($dupKeys[$rowKey]) ? ' duplicate-name' : '';
                                     echo "<tr data-id='$id' class='{$dupClass}'>";
-                                    echo "<td class='text-center select-col'><input type='checkbox' class='row-select' data-id='$id'></td>";
-                                    echo "<td class='editable' data-field='amarchal'>" . htmlspecialchars($row['amarchal'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='gizbar'>" . htmlspecialchars($row['gizbar'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='software_id'>" . htmlspecialchars($row['software_id'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='donor_number'>" . htmlspecialchars($row['donor_number'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='chatan_harar'>" . htmlspecialchars($row['chatan_harar'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='family_name'>" . htmlspecialchars($row['family_name'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='first_name'>" . htmlspecialchars($row['first_name'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='name_for_mail'>" . htmlspecialchars($row['name_for_mail'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='full_name'>" . htmlspecialchars($row['full_name'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='husband_id'>" . htmlspecialchars($row['husband_id'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='wife_id'>" . htmlspecialchars($row['wife_id'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='address'>" . htmlspecialchars($row['address'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='mail_to'>" . htmlspecialchars($row['mail_to'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='neighborhood'>" . htmlspecialchars($row['neighborhood'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='floor'>" . htmlspecialchars($row['floor'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='city'>" . htmlspecialchars($row['city'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='phone'>" . htmlspecialchars($row['phone'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='husband_mobile'>" . htmlspecialchars($row['husband_mobile'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='wife_name'>" . htmlspecialchars($row['wife_name'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='wife_mobile'>" . htmlspecialchars($row['wife_mobile'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='updated_email'>" . htmlspecialchars($row['updated_email'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='husband_email'>" . htmlspecialchars($row['husband_email'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='wife_email'>" . htmlspecialchars($row['wife_email'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='receipts_to'>" . htmlspecialchars($row['receipts_to'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='alphon'>" . htmlspecialchars($row['alphon'] ?? '') . "</td>";
-                                    echo "<td class='editable' data-field='send_messages'>" . htmlspecialchars($row['send_messages'] ?? '') . "</td>";
+                                    if ($canEdit) {
+                                        echo "<td class='text-center select-col'><input type='checkbox' class='row-select' data-id='$id'></td>";
+                                    } else {
+                                        echo "<td class='text-center select-col'></td>";
+                                    }
+                                    echo "<td class='{$cellClass}' data-field='amarchal'>" . htmlspecialchars($row['amarchal'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='gizbar'>" . htmlspecialchars($row['gizbar'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='software_id'>" . htmlspecialchars($row['software_id'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='donor_number'>" . htmlspecialchars($row['donor_number'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='chatan_harar'>" . htmlspecialchars($row['chatan_harar'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='family_name'>" . htmlspecialchars($row['family_name'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='first_name'>" . htmlspecialchars($row['first_name'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='name_for_mail'>" . htmlspecialchars($row['name_for_mail'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='full_name'>" . htmlspecialchars($row['full_name'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='husband_id'>" . htmlspecialchars($row['husband_id'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='wife_id'>" . htmlspecialchars($row['wife_id'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='address'>" . htmlspecialchars($row['address'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='mail_to'>" . htmlspecialchars($row['mail_to'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='neighborhood'>" . htmlspecialchars($row['neighborhood'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='floor'>" . htmlspecialchars($row['floor'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='city'>" . htmlspecialchars($row['city'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='phone'>" . htmlspecialchars($row['phone'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='husband_mobile'>" . htmlspecialchars($row['husband_mobile'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='wife_name'>" . htmlspecialchars($row['wife_name'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='wife_mobile'>" . htmlspecialchars($row['wife_mobile'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='updated_email'>" . htmlspecialchars($row['updated_email'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='husband_email'>" . htmlspecialchars($row['husband_email'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='wife_email'>" . htmlspecialchars($row['wife_email'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='receipts_to'>" . htmlspecialchars($row['receipts_to'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='alphon'>" . htmlspecialchars($row['alphon'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='send_messages'>" . htmlspecialchars($row['send_messages'] ?? '') . "</td>";
                                     echo "<td>" . htmlspecialchars($row['last_change'] ?? '') . "</td>";
-                                    echo "<td class='text-center'>";
-                                    echo "<button class='btn btn-sm btn-warning edit-btn me-1' data-id='$id' title='ערוך'><i class='bi bi-pencil'></i></button>";
-                                    echo "<button class='btn btn-sm btn-danger delete-btn' data-id='$id' title='מחק'><i class='bi bi-trash'></i></button>";
+                                    echo "<td class='text-center action-cell'>";
+                                    if ($canEdit) {
+                                        echo "<div class='row-actions'>";
+                                        echo "<button class='btn btn-sm btn-warning edit-btn me-1' data-id='$id' title='ערוך'><i class='bi bi-pencil'></i></button>";
+                                        echo "<button class='btn btn-sm btn-danger delete-btn' data-id='$id' title='מחק'><i class='bi bi-trash'></i></button>";
+                                        echo "</div>";
+                                    } else {
+                                        echo "<span class='text-muted'>צפייה בלבד</span>";
+                                    }
                                     echo "</td>";
                                     echo "</tr>";
                             }
@@ -574,11 +712,14 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         <h2>רשימת אמרכלים</h2>
         <div class="card fixed-card">
             <div class="card-body">
-                <div class="table-action-bar">
-                    <button type="button" class="btn btn-brand" id="addAmarchalBtn">הוסף חדש</button>
-                    <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#importAmarchalModal">ייבא אקסל</button>
-                    <form method="post" style="display:inline; margin:0;">
+                <div class="table-action-bar" id="amarchalActionBar">
+                    <?php if ($canEdit): ?>
+                        <button type="button" class="btn btn-brand" id="addAmarchalBtn">הוסף חדש</button>
+                        <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#importAmarchalModal">ייבא אקסל</button>
+                    <?php endif; ?>
+                    <form method="post" style="display:inline; margin:0;" id="exportAmarchalForm">
                         <input type="hidden" name="action" value="export_amarchal_list">
+                        <input type="hidden" name="export_ids" value="">
                         <button type="submit" class="btn btn-brand">ייצוא אקסל</button>
                     </form>
                 </div>
@@ -623,11 +764,14 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         <h2>רשימת גזברים</h2>
         <div class="card fixed-card">
             <div class="card-body">
-                <div class="table-action-bar">
-                    <button type="button" class="btn btn-brand" id="addGizbarBtn">הוסף חדש</button>
-                    <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#importGizbarModal">ייבא אקסל</button>
-                    <form method="post" style="display:inline; margin:0;">
+                <div class="table-action-bar" id="gizbarActionBar">
+                    <?php if ($canEdit): ?>
+                        <button type="button" class="btn btn-brand" id="addGizbarBtn">הוסף חדש</button>
+                        <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#importGizbarModal">ייבא אקסל</button>
+                    <?php endif; ?>
+                    <form method="post" style="display:inline; margin:0;" id="exportGizbarForm">
                         <input type="hidden" name="action" value="export_gizbar_list">
+                        <input type="hidden" name="export_ids" value="">
                         <button type="submit" class="btn btn-brand">ייצוא אקסל</button>
                     </form>
                 </div>
@@ -644,6 +788,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                                 <th>טלפון</th>
                                 <th>פלאפון</th>
                                 <th>מייל</th>
+                                <th>אמרכל</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -659,7 +804,8 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                                 $safePhone = htmlspecialchars($row['phone'] ?? '', ENT_QUOTES, 'UTF-8');
                                 $safeMobile = htmlspecialchars($row['husband_mobile'] ?? '', ENT_QUOTES, 'UTF-8');
                                 $safeEmail = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
-                                echo "<tr><td>{$safeName}</td><td>{$safeId}</td><td>{$safeAddress}</td><td>{$safeNeighborhood}</td><td>{$safeFloor}</td><td>{$safeCity}</td><td>{$safePhone}</td><td>{$safeMobile}</td><td>{$safeEmail}</td></tr>";
+                                $safeAmarchal = htmlspecialchars($row['amarchal'] ?? '', ENT_QUOTES, 'UTF-8');
+                                echo "<tr><td>{$safeName}</td><td>{$safeId}</td><td>{$safeAddress}</td><td>{$safeNeighborhood}</td><td>{$safeFloor}</td><td>{$safeCity}</td><td>{$safePhone}</td><td>{$safeMobile}</td><td>{$safeEmail}</td><td>{$safeAmarchal}</td></tr>";
                             endforeach; ?>
                         </tbody>
                     </table>
@@ -684,11 +830,25 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                     <div class="row">
                         <div class="col-md-4 mb-3">
                             <label for="amarchal" class="form-label">אמרכל</label>
-                            <input type="text" class="form-control" id="amarchal" name="amarchal">
+                            <select class="form-select" id="amarchal" name="amarchal">
+                                <option value="">בחר...</option>
+                                <?php foreach ($amarchalim as $name): ?>
+                                    <option value="<?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label for="gizbar" class="form-label">גזבר</label>
-                            <input type="text" class="form-control" id="gizbar" name="gizbar">
+                            <select class="form-select" id="gizbar" name="gizbar">
+                                <option value="">בחר...</option>
+                                <?php foreach ($gizbarim as $name): ?>
+                                    <option value="<?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         <div class="col-md-4 mb-3">
                             <label for="software_id" class="form-label">מזהה תוכנה</label>
@@ -888,6 +1048,11 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
 
 <script>
 (function() {
+    const gizbarToAmarchal = <?php echo json_encode($gizbarToAmarchal, JSON_UNESCAPED_UNICODE); ?>;
+    const gizbarList = <?php echo json_encode($gizbarim, JSON_UNESCAPED_UNICODE); ?>;
+    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+    const canEdit = <?php echo $canEdit ? 'true' : 'false'; ?>;
+
     function setupPeoplePage($) {
         if (window.__peopleInitDone) { return; }
         window.__peopleInitDone = true;
@@ -898,6 +1063,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         if ($.fn.DataTable.isDataTable('#peopleTable')) {
             $('#peopleTable').DataTable().clear().destroy();
         }
+        const tableStateKey = 'peopleTableState';
         const table = $('#peopleTable').DataTable({
             destroy: true,
             retrieve: true,
@@ -911,14 +1077,64 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                 paginate: { first: 'ראשון', last: 'אחרון', next: 'הבא', previous: 'הקודם' }
             },
             pageLength: 25,
-            autoWidth: false,
+            autoWidth: true,
             responsive: true,
             order: [[6, 'asc']],
+            dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
+            buttons: [
+                { extend: 'colvis', text: 'הצג/הסתר עמודות' }
+            ],
+            stateSave: true,
+            stateSaveCallback: function(settings, data) {
+                localStorage.setItem(tableStateKey, JSON.stringify(data));
+            },
+            stateLoadCallback: function() {
+                const raw = localStorage.getItem(tableStateKey);
+                return raw ? JSON.parse(raw) : null;
+            },
             columnDefs: [
                 { orderable: false, targets: 0, width: '28px' },
                 { orderable: false, targets: -1 }
             ]
         });
+
+        function applyColumnResize(selector, dtInstance) {
+            if (!$.fn.colResizable) { return; }
+            let resizeTimer = null;
+            const initResize = function() {
+                try { $(selector).colResizable({ disable: true }); } catch (e) {}
+                setTimeout(function() {
+                    $(selector).colResizable({ liveDrag: false, resizeMode: 'fit' });
+                    if (dtInstance && dtInstance.columns) { dtInstance.columns.adjust(); }
+                }, 30);
+            };
+            initResize();
+            if (dtInstance && dtInstance.on) {
+                dtInstance.off('column-visibility.dt._resize');
+                dtInstance.on('column-visibility.dt._resize', function() {
+                    if (dtInstance && dtInstance.columns) { dtInstance.columns.adjust(); }
+                    if (resizeTimer) { clearTimeout(resizeTimer); }
+                    resizeTimer = setTimeout(function() {
+                        initResize();
+                    }, 200);
+                });
+            }
+        }
+
+        applyColumnResize('#peopleTable', table);
+        if (table.buttons) {
+            const placeColVis = function() {
+                const $btns = $(table.buttons().container());
+                if ($btns.length) {
+                    $btns.insertAfter('#deleteSelectedBtn');
+                }
+            };
+            placeColVis();
+            table.off('draw._placeColVis');
+            table.on('draw._placeColVis', function() {
+                placeColVis();
+            });
+        }
 
         // Defensive cleanup in case any duplicate info sections existed
         (function dedupeInfo(){
@@ -929,11 +1145,43 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
 
 
         $('#addPersonBtn').on('click', function() {
+            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
             isEditMode = false;
             $('#personModalLabel').text('הוסף איש קשר חדש');
             $('#personForm')[0].reset();
             $('#person_id').val('');
             modal.show();
+        });
+
+        function updateFullNameFromParts() {
+            const family = $('#family_name').val() || '';
+            const first = $('#first_name').val() || '';
+            const combined = (family + ' ' + first).replace(/\s+/g, ' ').trim();
+            $('#full_name').val(combined);
+        }
+
+        $('#family_name, #first_name').on('input', updateFullNameFromParts);
+
+        function updateAmarchalFromGizbar(force) {
+            const selected = $('#gizbar').val();
+            const currentAmarchal = $('#amarchal').val();
+            if (selected && gizbarToAmarchal[selected]) {
+                if (force || !currentAmarchal) {
+                    $('#amarchal').val(gizbarToAmarchal[selected]);
+                }
+            }
+        }
+
+        function ensureOption(selectId, value) {
+            if (!value) { return; }
+            const $select = $(selectId);
+            if ($select.find('option').filter(function(){ return $(this).val() === value; }).length === 0) {
+                $select.append($('<option>', { value: value, text: value }));
+            }
+        }
+
+        $('#gizbar').on('change', function() {
+            updateAmarchalFromGizbar(true);
         });
 
         const amarchalModal = new bootstrap.Modal(document.getElementById('addAmarchalModal'));
@@ -950,6 +1198,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         });
 
         function saveRepresentative(field, selectId, modalInstance) {
+            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
             const $select = $(selectId);
             const personId = $select.val();
             const name = $select.find('option:selected').data('name');
@@ -960,7 +1209,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
             $.ajax({
                 url: 'people_api.php',
                 method: 'POST',
-                data: { action: 'update', id: personId, field: field, value: name },
+                data: { action: 'update', id: personId, field: field, value: name, csrf_token: csrfToken },
                 success: function(response) {
                     if (response.success) {
                         modalInstance.hide();
@@ -986,6 +1235,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         });
 
         $('#peopleTable').on('click', '.edit-btn', function() {
+            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
             isEditMode = true;
             const id = $(this).data('id');
             $('#personModalLabel').text('ערוך איש קשר');
@@ -996,6 +1246,8 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                     if (response.success) {
                         const person = response.data;
                         $('#person_id').val(person.id);
+                        ensureOption('#amarchal', person.amarchal || '');
+                        ensureOption('#gizbar', person.gizbar || '');
                         $('#amarchal').val(person.amarchal || '');
                         $('#gizbar').val(person.gizbar || '');
                         $('#software_id').val(person.software_id || '');
@@ -1004,7 +1256,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                         $('#family_name').val(person.family_name || '');
                         $('#first_name').val(person.first_name || '');
                         $('#name_for_mail').val(person.name_for_mail || '');
-                        $('#full_name').val(person.full_name || '');
+                        updateFullNameFromParts();
                         $('#husband_id').val(person.husband_id || '');
                         $('#wife_id').val(person.wife_id || '');
                         $('#address').val(person.address || '');
@@ -1022,6 +1274,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                         $('#receipts_to').val(person.receipts_to || '');
                         $('#alphon').val(person.alphon || '');
                         $('#send_messages').val(person.send_messages || '');
+                        updateAmarchalFromGizbar(false);
                         modal.show();
                     } else {
                         alert('שגיאה בטעינת הנתונים');
@@ -1033,6 +1286,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         });
 
         $('#savePersonBtn').on('click', function() {
+            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
             const formData = $('#personForm').serializeArray();
             const payload = {};
             formData.forEach(function(item) {
@@ -1043,6 +1297,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
             if (isEditMode) {
                 payload.id = $('#person_id').val();
             }
+            payload.csrf_token = csrfToken;
 
             $.ajax({
                 url: 'people_api.php',
@@ -1082,7 +1337,34 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
             updateDeleteSelectedState();
         });
 
+        function getExportIds(dtInstance, rowSelector) {
+            if (!dtInstance || !dtInstance.rows) { return ''; }
+            const ids = [];
+            dtInstance.rows({ search: 'applied', order: 'applied' }).every(function () {
+                const $row = $(this.node());
+                const id = $row.data('id');
+                if (id) { ids.push(id); }
+            });
+            return ids.join(',');
+        }
+
+        $('#exportPeopleForm').on('submit', function() {
+            const ids = getExportIds(table);
+            $(this).find('input[name="export_ids"]').val(ids);
+        });
+
+        $('#exportAmarchalForm').on('submit', function() {
+            const ids = getExportIds(amarchalTable);
+            $(this).find('input[name="export_ids"]').val(ids);
+        });
+
+        $('#exportGizbarForm').on('submit', function() {
+            const ids = getExportIds(gizbarTable);
+            $(this).find('input[name="export_ids"]').val(ids);
+        });
+
         $('#deleteSelectedBtn').on('click', function() {
+            if (!canEdit) { alert('אין הרשאה למחיקה'); return; }
             const ids = [];
             $('.row-select:checked').each(function() {
                 ids.push($(this).data('id'));
@@ -1099,7 +1381,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
             $.ajax({
                 url: 'people_api.php',
                 method: 'POST',
-                data: { action: 'delete_bulk', ids: ids },
+                data: { action: 'delete_bulk', ids: ids, csrf_token: csrfToken },
                 success: function(response) {
                     if (response.success) {
                         window.location.reload();
@@ -1116,56 +1398,126 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         });
 
         // Init simple lists tables if present
+        let amarchalTable = null;
+        let gizbarTable = null;
         if ($('#amarchalTable').length) {
             if ($.fn.DataTable.isDataTable('#amarchalTable')) { $('#amarchalTable').DataTable().clear().destroy(); }
-            $('#amarchalTable').DataTable({
+            const amarchalStateKey = 'amarchalTableState';
+            amarchalTable = $('#amarchalTable').DataTable({
                 destroy: true,
                 retrieve: true,
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
                 pageLength: 25,
-                order: [[0, 'asc']]
+                order: [[0, 'asc']],
+                dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
+                buttons: [
+                    { extend: 'colvis', text: 'הצג/הסתר עמודות' }
+                ],
+                stateSave: true,
+                stateSaveCallback: function(settings, data) {
+                    localStorage.setItem(amarchalStateKey, JSON.stringify(data));
+                },
+                stateLoadCallback: function() {
+                    const raw = localStorage.getItem(amarchalStateKey);
+                    return raw ? JSON.parse(raw) : null;
+                }
             });
+            applyColumnResize('#amarchalTable', amarchalTable);
+            if (amarchalTable.buttons) {
+                amarchalTable.buttons().container().appendTo('#amarchalActionBar');
+            }
         }
         if ($('#gizbarTable').length) {
             if ($.fn.DataTable.isDataTable('#gizbarTable')) { $('#gizbarTable').DataTable().clear().destroy(); }
-            $('#gizbarTable').DataTable({
+            const gizbarStateKey = 'gizbarTableState';
+            gizbarTable = $('#gizbarTable').DataTable({
                 destroy: true,
                 retrieve: true,
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
                 pageLength: 25,
-                order: [[0, 'asc']]
+                order: [[0, 'asc']],
+                dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
+                buttons: [
+                    { extend: 'colvis', text: 'הצג/הסתר עמודות' }
+                ],
+                stateSave: true,
+                stateSaveCallback: function(settings, data) {
+                    localStorage.setItem(gizbarStateKey, JSON.stringify(data));
+                },
+                stateLoadCallback: function() {
+                    const raw = localStorage.getItem(gizbarStateKey);
+                    return raw ? JSON.parse(raw) : null;
+                }
             });
+            applyColumnResize('#gizbarTable', gizbarTable);
+            if (gizbarTable.buttons) {
+                gizbarTable.buttons().container().appendTo('#gizbarActionBar');
+            }
         }
 
         let originalValue = '';
         let currentCell = null;
+        let currentField = '';
         $('#peopleTable').on('dblclick', 'td.editable', function() {
+            if (!canEdit) { return; }
             if (currentCell) { saveEdit(); }
             currentCell = $(this);
+            currentField = currentCell.data('field');
             originalValue = currentCell.text();
-            const input = $('<input type="text" class="form-control form-control-sm">').val(originalValue).css({ 'width':'100%', 'box-sizing':'border-box' });
-            currentCell.html(input).addClass('editing');
-            input.focus().select();
-            input.on('blur', saveEdit);
-            input.on('keypress', function(e){ if (e.which === 13) { saveEdit(); } });
-            input.on('keydown', function(e){ if (e.which === 27) { cancelEdit(); } });
+            if (currentField === 'gizbar') {
+                const select = $('<select class="form-select form-select-sm"></select>');
+                select.append($('<option>', { value: '', text: '' }));
+                (gizbarList || []).forEach(function(name) {
+                    select.append($('<option>', { value: name, text: name }));
+                });
+                select.val(originalValue);
+                currentCell.html(select).addClass('editing');
+                select.focus();
+                select.on('change', function(){ saveEdit(true); });
+                select.on('blur', function(){ saveEdit(true); });
+                select.on('keydown', function(e){ if (e.which === 27) { cancelEdit(); } });
+            } else {
+                const input = $('<input type="text" class="form-control form-control-sm">').val(originalValue).css({ 'width':'100%', 'box-sizing':'border-box' });
+                currentCell.html(input).addClass('editing');
+                input.focus().select();
+                input.on('blur', saveEdit);
+                input.on('keypress', function(e){ if (e.which === 13) { saveEdit(); } });
+                input.on('keydown', function(e){ if (e.which === 27) { cancelEdit(); } });
+            }
         });
 
-        function saveEdit() {
+        function saveEdit(isSelect) {
             if (!currentCell) return;
             const input = currentCell.find('input');
-            if (!input.length) return;
-            const newValue = input.val();
-            const field = currentCell.data('field');
+            const select = currentCell.find('select');
+            const editor = select.length ? select : input;
+            if (!editor.length) return;
+            const newValue = editor.val();
+            const field = currentField || currentCell.data('field');
             const id = currentCell.closest('tr').data('id');
             if (newValue !== originalValue) {
                 $.ajax({
-                    url: 'people_api.php', method: 'POST', data: { action:'update', id, field, value:newValue },
+                    url: 'people_api.php', method: 'POST', data: { action:'update', id, field, value:newValue, csrf_token: csrfToken },
                     success: function(response) {
                         if (response.success) {
                             currentCell.text(newValue).removeClass('editing');
                             currentCell.css('background-color', '#d4edda');
                             setTimeout(() => { currentCell.css('background-color', ''); }, 1000);
+                            if (field === 'gizbar') {
+                                const amarchalVal = gizbarToAmarchal[newValue] || '';
+                                const $amarchalCell = currentCell.closest('tr').find("td[data-field='amarchal']");
+                                if ($amarchalCell.length) {
+                                    $amarchalCell.text(amarchalVal);
+                                }
+                                if (amarchalVal !== '') {
+                                    $.ajax({
+                                        url: 'people_api.php',
+                                        method: 'POST',
+                                        data: { action:'update', id, field:'amarchal', value: amarchalVal, csrf_token: csrfToken },
+                                        dataType: 'json'
+                                    });
+                                }
+                            }
                         } else { alert('שגיאה בעדכון: ' + response.error); currentCell.text(originalValue).removeClass('editing'); }
                     },
                     error: function(){ alert('שגיאה בעדכון'); currentCell.text(originalValue).removeClass('editing'); },
@@ -1175,17 +1527,20 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                 currentCell.text(originalValue).removeClass('editing');
             }
             currentCell = null;
+            currentField = '';
         }
-        function cancelEdit(){ if (currentCell) { currentCell.text(originalValue).removeClass('editing'); currentCell = null; } }
+        function cancelEdit(){ if (currentCell) { currentCell.text(originalValue).removeClass('editing'); currentCell = null; currentField = ''; } }
 
         // PDF Print Modal handlers
         $('input[name="reportType"]').on('change', function() {
             if ($(this).val() === 'amarchal') {
                 $('#amarchalSelection').show();
                 $('#gizbarSelection').hide();
+                $('#gizbarSortOptions').hide();
             } else {
                 $('#amarchalSelection').hide();
                 $('#gizbarSelection').show();
+                $('#gizbarSortOptions').show();
             }
         });
 
@@ -1208,6 +1563,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
         $('#generatePdfBtn').on('click', function() {
             const reportType = $('input[name="reportType"]:checked').val();
             const outputType = $('input[name="outputType"]:checked').val();
+            const sortBy = $('input[name="gizbarSort"]:checked').val() || 'gizbar';
             let selected = [];
             let selectedMonths = [];
 
@@ -1251,6 +1607,12 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
 
             form.append($('<input>', {
                 'type': 'hidden',
+                'name': 'sortBy',
+                'value': sortBy
+            }));
+
+            form.append($('<input>', {
+                'type': 'hidden',
                 'name': 'selected',
                 'value': JSON.stringify(selected)
             }));
@@ -1261,32 +1623,31 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                 'value': JSON.stringify(selectedMonths)
             }));
 
+            form.append($('<input>', {
+                'type': 'hidden',
+                'name': 'csrf_token',
+                'value': csrfToken
+            }));
+
             $('body').append(form);
             form.submit();
             form.remove();
 
-            // Close modal and remove backdrop
+            // Close modal
             const modalElement = document.getElementById('printPdfModal');
             const modalInstance = bootstrap.Modal.getInstance(modalElement);
             if (modalInstance) {
                 modalInstance.hide();
             }
-            
-            // Remove backdrop and restore body state
-            setTimeout(function() {
-                $('.modal-backdrop').remove();
-                $('body').removeClass('modal-open');
-                $('body').css('padding-right', '');
-                $('body').css('overflow', '');
-            }, 300);
         });
 
         $('#peopleTable').on('click', '.delete-btn', function() {
+            if (!canEdit) { alert('אין הרשאה למחיקה'); return; }
             const id = $(this).data('id');
             const row = $(this).closest('tr');
             if (confirm('האם אתה בטוח שברצונך למחוק רשומה זו?')) {
                 $.ajax({
-                    url:'people_api.php', method:'POST', data:{ action:'delete', id },
+                    url:'people_api.php', method:'POST', data:{ action:'delete', id, csrf_token: csrfToken },
                     success: function(response){ if (response.success) { table.row(row).remove().draw(); } else { alert('שגיאה במחיקה: ' + response.error); } },
                     error: function(){ alert('שגיאה במחיקה'); }, dataType:'json'
                 });
@@ -1295,7 +1656,7 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
     }
 
     function tryInit(attempts) {
-        if (window.jQuery && jQuery.fn && jQuery.fn.DataTable) {
+        if (window.jQuery && jQuery.fn && jQuery.fn.DataTable && jQuery.fn.dataTable && jQuery.fn.dataTable.Buttons) {
             setupPeoplePage(jQuery);
             return;
         }
@@ -1352,6 +1713,17 @@ $gizbarim = $pdo->query("SELECT DISTINCT gizbar FROM people WHERE gizbar IS NOT 
                         
                         <input type="radio" class="btn-check" name="reportType" id="reportTypeGizbar" value="gizbar" autocomplete="off">
                         <label class="btn btn-outline-primary" for="reportTypeGizbar">גזבר</label>
+                    </div>
+                </div>
+
+                <div class="mb-3" id="gizbarSortOptions" style="display:none;">
+                    <label class="form-label fw-bold">מיון גזברים:</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="gizbarSort" id="gizbarSortByName" value="gizbar" autocomplete="off" checked>
+                        <label class="btn btn-outline-secondary" for="gizbarSortByName">לפי א' ב' גזברים</label>
+
+                        <input type="radio" class="btn-check" name="gizbarSort" id="gizbarSortByAmarchal" value="amarchal" autocomplete="off">
+                        <label class="btn btn-outline-secondary" for="gizbarSortByAmarchal">לפי אמרכל</label>
                     </div>
                 </div>
 

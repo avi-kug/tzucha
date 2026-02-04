@@ -3,6 +3,10 @@ error_reporting(E_ALL);
 ini_set('display_errors', 1);
 require_once '../config/db.php';
 require_once '../vendor/autoload.php';
+require_once '../config/auth.php';
+
+auth_require_login($pdo);
+auth_require_permission('people');
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Pdf\Mpdf;
@@ -15,6 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die('Invalid request');
 }
 
+if (!csrf_validate()) {
+    die('Invalid CSRF');
+}
+
 // Get parameters
 $reportType = $_POST['reportType'] ?? '';
 $outputType = $_POST['outputType'] ?? 'report';
@@ -22,12 +30,39 @@ $selectedJson = $_POST['selected'] ?? '[]';
 $selected = json_decode($selectedJson, true);
 $monthsJson = $_POST['months'] ?? '[]';
 $months = json_decode($monthsJson, true);
+$sortBy = $_POST['sortBy'] ?? 'gizbar';
 if (!is_array($months)) {
     $months = [];
 }
 
 if (!in_array($reportType, ['amarchal', 'gizbar']) || empty($selected)) {
     die('Invalid parameters');
+}
+
+if ($reportType === 'gizbar') {
+    // Build map of gizbar -> amarchal for sorting
+    $mapStmt = $pdo->query("SELECT gizbar, amarchal FROM people WHERE gizbar IS NOT NULL AND gizbar <> ''");
+    $gizbarMap = [];
+    foreach ($mapStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $g = trim((string)($row['gizbar'] ?? ''));
+        $a = trim((string)($row['amarchal'] ?? ''));
+        if ($g !== '' && !isset($gizbarMap[$g])) {
+            $gizbarMap[$g] = $a;
+        }
+    }
+
+    $sortBy = $sortBy === 'amarchal' ? 'amarchal' : 'gizbar';
+    usort($selected, function ($a, $b) use ($gizbarMap, $sortBy) {
+        $aName = trim((string)$a);
+        $bName = trim((string)$b);
+        if ($sortBy === 'amarchal') {
+            $aA = $gizbarMap[$aName] ?? '';
+            $bA = $gizbarMap[$bName] ?? '';
+            $cmp = strcasecmp(mb_strtolower($aA, 'UTF-8'), mb_strtolower($bA, 'UTF-8'));
+            if ($cmp !== 0) { return $cmp; }
+        }
+        return strcasecmp(mb_strtolower($aName, 'UTF-8'), mb_strtolower($bName, 'UTF-8'));
+    });
 }
 
 // Create new spreadsheet

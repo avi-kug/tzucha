@@ -1,9 +1,24 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 require_once '../config/db.php';
+require_once '../config/auth.php';
+auth_require_login($pdo);
+auth_require_permission('people');
 
 // Get the action
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
+
+$mutatingActions = ['add', 'update_full', 'update', 'delete', 'delete_bulk'];
+if (in_array($action, $mutatingActions, true) && auth_role() === 'viewer') {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'אין הרשאה לפעולה זו.']);
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !csrf_validate()) {
+    echo json_encode(['success' => false, 'error' => 'פג תוקף הטופס, נסה שוב.']);
+    exit;
+}
 
 try {
     switch ($action) {
