@@ -76,3 +76,28 @@ document.addEventListener('DOMContentLoaded', function () {
 		setFilterTargets(active);
 	})();
 });
+
+document.addEventListener('DOMContentLoaded', function () {
+	var meta = document.querySelector('meta[name="csrf-token"]');
+	if (!meta) return;
+	var token = meta.getAttribute('content') || '';
+	if (!token) return;
+	document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(function (form) {
+		if (form.querySelector('input[name="csrf_token"]')) return;
+		var input = document.createElement('input');
+		input.type = 'hidden';
+		input.name = 'csrf_token';
+		input.value = token;
+		form.appendChild(input);
+	});
+});
+
+document.addEventListener('click', function (event) {
+	var editBtn = event.target.closest('[data-edit-member-id]');
+	if (!editBtn) return;
+	var id = Number(editBtn.getAttribute('data-edit-member-id'));
+	if (!Number.isFinite(id) || id <= 0) return;
+	if (typeof window.editMember === 'function') {
+		window.editMember(id);
+	}
+});

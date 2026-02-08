@@ -1,0 +1,6 @@
+.table-scroll-compact { max-height: 300px; }
+.inline-form { display: inline; margin: 0; }
+.inline-form-spaced { display: inline; margin-inline-start: 8px; }
+.inline-label { margin-inline-end: 6px; }
+.inline-month-input { width: auto; display: inline-block; vertical-align: middle; }
+.invoice-preview { margin-top: 6px; }
