@@ -238,12 +238,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             $selectStmt = $pdo->prepare($isAmarchal
-                ? "SELECT id FROM people WHERE amarchal = ? LIMIT 1"
-                : "SELECT id FROM people WHERE gizbar = ? LIMIT 1"
+                ? "SELECT * FROM people WHERE amarchal = ? LIMIT 1"
+                : "SELECT * FROM people WHERE gizbar = ? LIMIT 1"
             );
             $updateStmt = $pdo->prepare("UPDATE people SET husband_id = ?, address = ?, neighborhood = ?, floor = ?, city = ?, phone = ?, husband_mobile = ?, updated_email = ? WHERE id = ?");
 
-            $updated = 0; $skipped = 0; $errors = [];
+            $updated = 0; $skipped = 0; $noChanges = 0; $errors = [];
             for ($r = 1; $r < count($rows); $r++) {
                 $row = $rows[$r];
                 $excelRow = $r + 1;
@@ -273,27 +273,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
 
                 $selectStmt->execute([$data['name']]);
-                $foundId = $selectStmt->fetchColumn();
-                if ($foundId) {
-                    $updateStmt->execute([
-                        $data['husband_id'],
-                        $data['address'],
-                        $data['neighborhood'],
-                        $data['floor'],
-                        $data['city'],
-                        $data['phone'],
-                        $data['husband_mobile'],
-                        $data['updated_email'],
-                        $foundId
-                    ]);
-                    $updated++;
+                $existing = $selectStmt->fetch(PDO::FETCH_ASSOC);
+                if ($existing) {
+                    // בדוק אם יש שינוי בנתונים
+                    $hasChanges = (
+                        ($existing['husband_id'] ?? '') !== $data['husband_id'] ||
+                        ($existing['address'] ?? '') !== $data['address'] ||
+                        ($existing['neighborhood'] ?? '') !== $data['neighborhood'] ||
+                        ($existing['floor'] ?? '') !== $data['floor'] ||
+                        ($existing['city'] ?? '') !== $data['city'] ||
+                        ($existing['phone'] ?? '') !== $data['phone'] ||
+                        ($existing['husband_mobile'] ?? '') !== $data['husband_mobile'] ||
+                        ($existing['updated_email'] ?? '') !== $data['updated_email']
+                    );
+                    
+                    if ($hasChanges) {
+                        $updateStmt->execute([
+                            $data['husband_id'],
+                            $data['address'],
+                            $data['neighborhood'],
+                            $data['floor'],
+                            $data['city'],
+                            $data['phone'],
+                            $data['husband_mobile'],
+                            $data['updated_email'],
+                            $existing['id']
+                        ]);
+                        $updated++;
+                    } else {
+                        $noChanges++;
+                    }
                 } else {
                     $skipped++;
                     $errors[] = "שורה {$excelRow}: {$nameHeader} לא נמצא במערכת.";
                 }
             }
 
-            $summaryMsg = "ייבוא {$title} הושלם: עודכנו {$updated}, דולגו {$skipped}.";
+            $summaryMsg = "ייבוא {$title} הושלם: עודכנו {$updated}";
+            if ($noChanges > 0) {
+                $summaryMsg .= ", ללא שינויים {$noChanges}";
+            }
+            $summaryMsg .= ", דולגו {$skipped}.";
             if (!empty($errors)) {
                 $summaryMsg .= "\n" . implode("\n", array_slice($errors, 0, 15));
                 if (count($errors) > 15) {
@@ -388,7 +408,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
             }
 
-            $select = $pdo->prepare("SELECT id FROM people WHERE full_name = ? LIMIT 1");
+            $select = $pdo->prepare("SELECT * FROM people WHERE full_name = ? LIMIT 1");
             $insert = $pdo->prepare("INSERT INTO people (
                 amarchal, gizbar, software_id, donor_number, chatan_harar, family_name, first_name,
                 name_for_mail, full_name, husband_id, wife_id, address, mail_to, neighborhood,
@@ -403,7 +423,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 WHERE id = ?
             ");
 
-            $added = 0; $updated = 0; $skipped = 0; $errors = [];
+            $added = 0; $updated = 0; $skipped = 0; $noChanges = 0; $errors = [];
             $processedNames = []; // Track names processed in this file to prevent duplicates
             
             for ($r = 1; $r < count($rows); $r++) {
@@ -439,20 +459,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $processedNames[$nameKey] = $excelRow;
 
                 $select->execute([$fullName]);
-                $existingId = $select->fetchColumn();
+                $existing = $select->fetch(PDO::FETCH_ASSOC);
                 
                 try {
-                    if ($existingId) {
-                        $update->execute([
-                            $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
-                            $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
-                            $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
-                            $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
-                            $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
-                            $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? '',
-                            $existingId
-                        ]);
-                        $updated++;
+                    if ($existing) {
+                        // בדוק אם יש שינוי בנתונים
+                        $hasChanges = false;
+                        $fieldsToCheck = ['amarchal', 'gizbar', 'software_id', 'donor_number', 'chatan_harar', 'family_name', 'first_name',
+                            'name_for_mail', 'full_name', 'husband_id', 'wife_id', 'address', 'mail_to', 'neighborhood',
+                            'floor', 'city', 'phone', 'husband_mobile', 'wife_name', 'wife_mobile', 'updated_email',
+                            'husband_email', 'wife_email', 'receipts_to', 'alphon', 'send_messages'];
+                        
+                        foreach ($fieldsToCheck as $field) {
+                            if (($existing[$field] ?? '') !== ($data[$field] ?? '')) {
+                                $hasChanges = true;
+                                break;
+                            }
+                        }
+                        
+                        if ($hasChanges) {
+                            $update->execute([
+                                $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
+                                $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
+                                $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
+                                $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
+                                $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
+                                $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? '',
+                                $existing['id']
+                            ]);
+                            $updated++;
+                        } else {
+                            $noChanges++;
+                        }
                     } else {
                         $insert->execute([
                             $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
@@ -479,7 +517,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     }
                 }
             }
-            $summaryMsg = "ייבוא הושלם: עודכנו {$updated}, נוספו {$added}, דולגו {$skipped}.";
+            $summaryMsg = "ייבוא הושלם: עודכנו {$updated}, נוספו {$added}";
+            if ($noChanges > 0) {
+                $summaryMsg .= ", ללא שינויים {$noChanges}";
+            }
+            $summaryMsg .= ", דולגו {$skipped}.";
             if (!empty($errors)) {
                 $summaryMsg .= "\n" . implode("\n", array_slice($errors, 0, 15));
                 if (count($errors) > 15) {
