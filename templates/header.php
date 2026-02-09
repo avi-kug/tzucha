@@ -27,11 +27,13 @@ auth_guard_page($pdo, $navItems);
                     משתמש: <strong><?php echo htmlspecialchars($_SESSION['username'] ?? '', ENT_QUOTES, 'UTF-8'); ?></strong>
                 </div>
             <?php endif; ?>
+            <?php $currentPage = basename($_SERVER['SCRIPT_NAME']); ?>
             <ul class="nav flex-column" style="flex:1 1 auto;">
                 <?php foreach ($navItems as $item): ?>
                     <?php if (auth_has_permission($item['key'])): ?>
+                        <?php $isActive = (basename($item['url']) === $currentPage); ?>
                         <li class="nav-item">
-                            <a class="nav-link" href="<?php echo htmlspecialchars($item['url'], ENT_QUOTES, 'UTF-8'); ?>">
+                            <a class="nav-link<?php echo $isActive ? ' active' : ''; ?>" href="<?php echo htmlspecialchars($item['url'], ENT_QUOTES, 'UTF-8'); ?>">
                                 <?php echo htmlspecialchars($item['label'], ENT_QUOTES, 'UTF-8'); ?>
                             </a>
                         </li>

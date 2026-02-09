@@ -722,9 +722,9 @@ $dateFilterSql = $dateFilterParts ? " WHERE " . implode(" AND ", $dateFilterPart
 $combinedDateFilterParams = array_merge($dateFilterParams, $dateFilterParams);
 
 $allowedTabs = ['fixed','regular','combined','dashboard','data'];
-$activeTab = isset($_GET['tab']) ? $_GET['tab'] : (isset($_COOKIE['expenses_tab']) ? $_COOKIE['expenses_tab'] : 'fixed');
+$activeTab = isset($_GET['tab']) ? $_GET['tab'] : (isset($_COOKIE['expenses_tab']) ? $_COOKIE['expenses_tab'] : 'dashboard');
 if (!in_array($activeTab, $allowedTabs, true)) {
-    $activeTab = 'fixed';
+    $activeTab = 'dashboard';
 }
 // Keep cookie in sync server-side so refresh lands on the same tab
 @setcookie('expenses_tab', $activeTab, time() + 31536000, '/');
@@ -756,11 +756,11 @@ if (!in_array($activeTab, $allowedTabs, true)) {
         </div>
     </form>
     <div class="tabs-nav">
-        <button class="tab-btn <?php echo ($activeTab === 'fixed') ? 'active' : ''; ?>" data-tab="fixed">הוצאות קבועות</button>
-        <button class="tab-btn <?php echo ($activeTab === 'regular') ? 'active' : ''; ?>" data-tab="regular">הוצאות רגילות</button>
-        <button class="tab-btn <?php echo ($activeTab === 'combined') ? 'active' : ''; ?>" data-tab="combined">סיכום שנתי</button>
-        <button class="tab-btn <?php echo ($activeTab === 'dashboard') ? 'active' : ''; ?>" data-tab="dashboard">דשבורד</button>
         <button class="tab-btn <?php echo ($activeTab === 'data') ? 'active' : ''; ?>" data-tab="data">נתונים</button>
+        <button class="tab-btn <?php echo ($activeTab === 'combined') ? 'active' : ''; ?>" data-tab="combined">כל הוצאות</button>
+        <button class="tab-btn <?php echo ($activeTab === 'regular') ? 'active' : ''; ?>" data-tab="regular">הוצאות רגילות</button>
+        <button class="tab-btn <?php echo ($activeTab === 'fixed') ? 'active' : ''; ?>" data-tab="fixed">הוצאות קבועות</button>
+        <button class="tab-btn <?php echo ($activeTab === 'dashboard') ? 'active' : ''; ?>" data-tab="dashboard">דשבורד</button>
     </div>
 </div>
 

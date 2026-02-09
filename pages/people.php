@@ -595,9 +595,10 @@ foreach ($gizbarMapRows as $row) {
 
 <!-- Tabs Navigation -->
 <div class="tabs-nav">
-    <button class="tab-btn<?php echo ($activeTab==='full')?' active':''; ?>" data-tab="full">פרטים מלאים</button>
+
     <button class="tab-btn<?php echo ($activeTab==='amarchal')?' active':''; ?>" data-tab="amarchal">רשימת אמרכלים</button>
     <button class="tab-btn<?php echo ($activeTab==='gizbar')?' active':''; ?>" data-tab="gizbar">רשימת גזברים</button>
+    <button class="tab-btn<?php echo ($activeTab==='full')?' active':''; ?>" data-tab="full">פרטים מלאים</button>
 </div>
 
 <div class="tab-panel<?php echo ($activeTab==='full')?' active' : ''; ?>" id="full-tab">

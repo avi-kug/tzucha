@@ -1,0 +1,37 @@
+/* Standing Orders page styles */
+.so-amount {
+    font-weight: 600;
+    color: #2c5282;
+}
+
+.history-section {
+    max-height: 350px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+}
+
+.history-total {
+    text-align: center;
+    padding: 10px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 1.1rem;
+}
+
+.history-total strong {
+    color: #fff;
+}
+
+.table-action-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 15px;
+}
+
+.inline-form {
+    display: inline;
+    margin: 0;
+}
