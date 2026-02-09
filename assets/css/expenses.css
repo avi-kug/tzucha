@@ -4,3 +4,57 @@
 .inline-label { margin-inline-end: 6px; }
 .inline-month-input { width: auto; display: inline-block; vertical-align: middle; }
 .invoice-preview { margin-top: 6px; }
+
+/* Tabs */
+.tabs-nav {
+    display: flex !important;
+    direction: rtl !important;
+    justify-content: flex-end !important;
+    flex-direction: row-reverse !important;
+    border-bottom: 2px solid #ddd;
+    margin-bottom: 20px;
+    gap: 5px;
+}
+
+.tabs-nav .tab-btn {
+    padding: 12px 24px;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 3px solid transparent !important;
+    cursor: pointer !important;
+    font-size: 16px;
+    font-weight: 500;
+    transition: all 0.3s;
+    color: #666 !important;
+    pointer-events: auto !important;
+}
+
+.tabs-nav .tab-btn:hover {
+    background-color: #f8f9fa !important;
+    color: #333 !important;
+}
+
+.tabs-nav .tab-btn.active {
+    color: #007bff !important;
+    border-bottom-color: #007bff !important;
+    font-weight: 600 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+.tab-panel {
+    display: none !important;
+    padding: 24px 0 0 0;
+    background: #fff;
+    animation: fadeIn 0.3s;
+}
+
+.tab-panel.active {
+    display: block !important;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}

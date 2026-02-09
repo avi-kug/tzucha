@@ -1,6 +1,16 @@
 <?php
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+
+// Increase limits for large reports
+ini_set('memory_limit', '1024M'); // 1GB for very large reports
+ini_set('max_execution_time', '600'); // 10 minutes
+set_time_limit(600);
+
+// Increase PCRE limits for large HTML processing in mPDF
+ini_set('pcre.backtrack_limit', '5000000'); // 5x default (prevents regex backtrack errors)
+ini_set('pcre.recursion_limit', '100000');  // 10x default
+
 require_once '../config/db.php';
 require_once '../vendor/autoload.php';
 require_once '../config/auth.php';
@@ -31,12 +41,24 @@ $selected = json_decode($selectedJson, true);
 $monthsJson = $_POST['months'] ?? '[]';
 $months = json_decode($monthsJson, true);
 $sortBy = $_POST['sortBy'] ?? 'gizbar';
+$partLabel = $_POST['partLabel'] ?? ''; // For split PDFs
 if (!is_array($months)) {
     $months = [];
 }
 
 if (!in_array($reportType, ['amarchal', 'gizbar']) || empty($selected)) {
     die('Invalid parameters');
+}
+
+// Log for debugging large reports
+$selectedCount = count($selected);  
+$monthsCount = count($months) ?: 1;
+$estimatedLabels = ($outputType === 'labels') ? $selectedCount * $monthsCount : 0;
+error_log("Print PDF: reportType=$reportType, outputType=$outputType, selected count=$selectedCount, months=$monthsCount, estimated labels=$estimatedLabels, partLabel=$partLabel");
+
+// Warning for extremely large jobs
+if ($estimatedLabels > 200) {
+    error_log("WARNING: Large label job - $estimatedLabels labels may cause timeout/memory issues");
 }
 
 if ($reportType === 'gizbar') {
@@ -65,12 +87,18 @@ if ($reportType === 'gizbar') {
     });
 }
 
-// Create new spreadsheet
-$spreadsheet = new Spreadsheet();
-$spreadsheet->removeSheetByIndex(0);
-
 // Cache reports for PDF rendering
 $reports = [];
+
+// Check if we need to create Excel spreadsheet (not needed for labels)
+$needsSpreadsheet = ($outputType !== 'labels');
+$spreadsheet = null;
+
+if ($needsSpreadsheet) {
+    // Create new spreadsheet
+    $spreadsheet = new Spreadsheet();
+    $spreadsheet->removeSheetByIndex(0);
+}
 
 // Process each selected item
 foreach ($selected as $selectedName) {
@@ -105,176 +133,178 @@ foreach ($selected as $selectedName) {
         'people' => $people,
     ];
     
-    // Create sheet for this item
-    $sheet = $spreadsheet->createSheet();
-    $sheetTitle = mb_substr($selectedName, 0, 31); // Excel sheet name limit
-    $sheet->setTitle($sheetTitle);
-    $sheet->setRightToLeft(true);
+    // Create sheet for this item (only if creating Excel output)
+    if ($needsSpreadsheet) {
+        $sheet = $spreadsheet->createSheet();
+        $sheetTitle = mb_substr($selectedName, 0, 31); // Excel sheet name limit
+        $sheet->setTitle($sheetTitle);
+        $sheet->setRightToLeft(true);
     
-    // Set up headers
-    $row = 1;
-    
-    // בס"ד at top right
-    $lastCol = $reportType === 'amarchal' ? 'G' : 'F';
-    $sheet->setCellValue($lastCol . $row, 'בס"ד');
-    $sheet->getStyle($lastCol . $row)->getFont()->setBold(true)->setSize(14);
-    $sheet->getStyle($lastCol . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-    $row++;
-    $row++; // Empty row
-    
-    // Title
-    $titleText = $reportType === 'amarchal' 
-        ? "דוח אמרכל: $selectedName" 
-        : "דוח גזבר: $selectedName";
-    $sheet->setCellValue('A' . $row, $titleText);
-    $sheet->mergeCells('A' . $row . ':' . $lastCol . $row);
-    $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(18);
-    $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-    $sheet->getStyle('A' . $row)->getFill()
-        ->setFillType(Fill::FILL_SOLID)
-        ->getStartColor()->setRGB('4A90E2');
-    $sheet->getStyle('A' . $row)->getFont()->getColor()->setRGB('FFFFFF');
-    $sheet->getRowDimension($row)->setRowHeight(30);
-    $row++;
-    $row++; // Empty row
-    
-    // Column headers
-    if ($reportType === 'amarchal') {
-        $headers = ['גזבר', 'משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
-        $sheet->fromArray($headers, null, 'A' . $row);
-    } else {
-        $headers = ['משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
-        $sheet->fromArray($headers, null, 'A' . $row);
-    }
-    
-    // Style headers
-    $headerRange = 'A' . $row . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . $row;
-    $sheet->getStyle($headerRange)->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('FFFFFF');
-    $sheet->getStyle($headerRange)->getFill()
-        ->setFillType(Fill::FILL_SOLID)
-        ->getStartColor()->setRGB('2C3E50');
-    $sheet->getStyle($headerRange)->getBorders()->getAllBorders()
-        ->setBorderStyle(Border::BORDER_MEDIUM);
-    $sheet->getStyle($headerRange)->getAlignment()
-        ->setHorizontal(Alignment::HORIZONTAL_CENTER)
-        ->setVertical(Alignment::VERTICAL_CENTER);
-    $sheet->getRowDimension($row)->setRowHeight(25);
-    $row++;
-    
-    // Data rows
-    $startDataRow = $row;
-    $isOddRow = true;
-    foreach ($people as $person) {
+        // Set up headers
+        $row = 1;
+        
+        // בס"ד at top right
+        $lastCol = $reportType === 'amarchal' ? 'G' : 'F';
+        $sheet->setCellValue($lastCol . $row, 'בס"ד');
+        $sheet->getStyle($lastCol . $row)->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle($lastCol . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $row++;
+        $row++; // Empty row
+        
+        // Title
+        $titleText = $reportType === 'amarchal' 
+            ? "דוח אמרכל: $selectedName" 
+            : "דוח גזבר: $selectedName";
+        $sheet->setCellValue('A' . $row, $titleText);
+        $sheet->mergeCells('A' . $row . ':' . $lastCol . $row);
+        $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(18);
+        $sheet->getStyle('A' . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle('A' . $row)->getFill()
+            ->setFillType(Fill::FILL_SOLID)
+            ->getStartColor()->setRGB('4A90E2');
+        $sheet->getStyle('A' . $row)->getFont()->getColor()->setRGB('FFFFFF');
+        $sheet->getRowDimension($row)->setRowHeight(30);
+        $row++;
+        $row++; // Empty row
+        
+        // Column headers
         if ($reportType === 'amarchal') {
-            $rowData = [
-                $person['gizbar'] ?? '',
-                $person['family_name'] ?? '',
-                $person['first_name'] ?? '',
-                $person['husband_mobile'] ?? '',
-                $person['address'] ?? '',
-                $person['floor'] ?? '',
-                $person['city'] ?? ''
-            ];
+            $headers = ['גזבר', 'משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
+            $sheet->fromArray($headers, null, 'A' . $row);
         } else {
-            $rowData = [
-                $person['family_name'] ?? '',
-                $person['first_name'] ?? '',
-                $person['husband_mobile'] ?? '',
-                $person['address'] ?? '',
-                $person['floor'] ?? '',
-                $person['city'] ?? ''
-            ];
+            $headers = ['משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
+            $sheet->fromArray($headers, null, 'A' . $row);
         }
         
-        $sheet->fromArray($rowData, null, 'A' . $row);
+        // Style headers
+        $headerRange = 'A' . $row . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . $row;
+        $sheet->getStyle($headerRange)->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('FFFFFF');
+        $sheet->getStyle($headerRange)->getFill()
+            ->setFillType(Fill::FILL_SOLID)
+            ->getStartColor()->setRGB('2C3E50');
+        $sheet->getStyle($headerRange)->getBorders()->getAllBorders()
+            ->setBorderStyle(Border::BORDER_MEDIUM);
+        $sheet->getStyle($headerRange)->getAlignment()
+            ->setHorizontal(Alignment::HORIZONTAL_CENTER)
+            ->setVertical(Alignment::VERTICAL_CENTER);
+        $sheet->getRowDimension($row)->setRowHeight(25);
+        $row++;
         
-        // Alternating row colors
-        $rowRange = 'A' . $row . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . $row;
-        if (!$isOddRow) {
-            $sheet->getStyle($rowRange)->getFill()
+        // Data rows
+        $startDataRow = $row;
+        $isOddRow = true;
+        foreach ($people as $person) {
+            if ($reportType === 'amarchal') {
+                $rowData = [
+                    $person['gizbar'] ?? '',
+                    $person['family_name'] ?? '',
+                    $person['first_name'] ?? '',
+                    $person['husband_mobile'] ?? '',
+                    $person['address'] ?? '',
+                    $person['floor'] ?? '',
+                    $person['city'] ?? ''
+                ];
+            } else {
+                $rowData = [
+                    $person['family_name'] ?? '',
+                    $person['first_name'] ?? '',
+                    $person['husband_mobile'] ?? '',
+                    $person['address'] ?? '',
+                    $person['floor'] ?? '',
+                    $person['city'] ?? ''
+                ];
+            }
+            
+            $sheet->fromArray($rowData, null, 'A' . $row);
+            
+            // Alternating row colors
+            $rowRange = 'A' . $row . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . $row;
+            if (!$isOddRow) {
+                $sheet->getStyle($rowRange)->getFill()
+                    ->setFillType(Fill::FILL_SOLID)
+                    ->getStartColor()->setRGB('F8F9FA');
+            }
+            $sheet->getStyle($rowRange)->getAlignment()
+                ->setVertical(Alignment::VERTICAL_CENTER)
+                ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            $sheet->getRowDimension($row)->setRowHeight(20);
+            
+            $isOddRow = !$isOddRow;
+            $row++;
+        }
+        
+        // Style data rows with borders
+        if ($row > $startDataRow) {
+            $dataRange = 'A' . $startDataRow . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . ($row - 1);
+            $sheet->getStyle($dataRange)->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN)
+                ->getColor()->setRGB('CCCCCC');
+        }
+        
+        // Add summary
+        $row++;
+        $totalPeople = count($people);
+        if ($reportType === 'amarchal') {
+            // Count unique treasurers
+            $uniqueGizbarim = array_unique(array_filter(array_column($people, 'gizbar')));
+            $totalGizbarim = count($uniqueGizbarim);
+            
+            $sheet->setCellValue('A' . $row, "סה\"כ גזברים: $totalGizbarim");
+            $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
+            $sheet->getStyle('A' . $row)->getFill()
                 ->setFillType(Fill::FILL_SOLID)
-                ->getStartColor()->setRGB('F8F9FA');
+                ->getStartColor()->setRGB('E8F4F8');
+            $sheet->getStyle('A' . $row)->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
+            $row++;
+            
+            $sheet->setCellValue('A' . $row, "סה\"כ קופות: $totalPeople");
+            $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
+            $sheet->getStyle('A' . $row)->getFill()
+                ->setFillType(Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('E8F4F8');
+            $sheet->getStyle('A' . $row)->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
+        } else {
+            $sheet->setCellValue('A' . $row, "סה\"כ קופות: $totalPeople");
+            $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
+            $sheet->getStyle('A' . $row)->getFill()
+                ->setFillType(Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('E8F4F8');
+            $sheet->getStyle('A' . $row)->getBorders()->getAllBorders()
+                ->setBorderStyle(Border::BORDER_THIN);
         }
-        $sheet->getStyle($rowRange)->getAlignment()
-            ->setVertical(Alignment::VERTICAL_CENTER)
-            ->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-        $sheet->getRowDimension($row)->setRowHeight(20);
         
-        $isOddRow = !$isOddRow;
-        $row++;
-    }
-    
-    // Style data rows with borders
-    if ($row > $startDataRow) {
-        $dataRange = 'A' . $startDataRow . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . ($row - 1);
-        $sheet->getStyle($dataRange)->getBorders()->getAllBorders()
-            ->setBorderStyle(Border::BORDER_THIN)
-            ->getColor()->setRGB('CCCCCC');
-    }
-    
-    // Add summary
-    $row++;
-    $totalPeople = count($people);
-    if ($reportType === 'amarchal') {
-        // Count unique treasurers
-        $uniqueGizbarim = array_unique(array_filter(array_column($people, 'gizbar')));
-        $totalGizbarim = count($uniqueGizbarim);
+        // Set column widths based on content
+        $lastCol = $reportType === 'amarchal' ? 'G' : 'F';
         
-        $sheet->setCellValue('A' . $row, "סה\"כ גזברים: $totalGizbarim");
-        $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
-        $sheet->getStyle('A' . $row)->getFill()
-            ->setFillType(Fill::FILL_SOLID)
-            ->getStartColor()->setRGB('E8F4F8');
-        $sheet->getStyle('A' . $row)->getBorders()->getAllBorders()
-            ->setBorderStyle(Border::BORDER_THIN);
-        $row++;
+        // Auto-size all columns first
+        foreach (range('A', $lastCol) as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
         
-        $sheet->setCellValue('A' . $row, "סה\"כ קופות: $totalPeople");
-        $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
-        $sheet->getStyle('A' . $row)->getFill()
-            ->setFillType(Fill::FILL_SOLID)
-            ->getStartColor()->setRGB('E8F4F8');
-        $sheet->getStyle('A' . $row)->getBorders()->getAllBorders()
-            ->setBorderStyle(Border::BORDER_THIN);
-    } else {
-        $sheet->setCellValue('A' . $row, "סה\"כ קופות: $totalPeople");
-        $sheet->getStyle('A' . $row)->getFont()->setBold(true)->setSize(12);
-        $sheet->getStyle('A' . $row)->getFill()
-            ->setFillType(Fill::FILL_SOLID)
-            ->getStartColor()->setRGB('E8F4F8');
-        $sheet->getStyle('A' . $row)->getBorders()->getAllBorders()
-            ->setBorderStyle(Border::BORDER_THIN);
-    }
-    
-    // Set column widths based on content
-    $lastCol = $reportType === 'amarchal' ? 'G' : 'F';
-    
-    // Auto-size all columns first
-    foreach (range('A', $lastCol) as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
-    }
-    
-    // Set minimum widths for readability
-    if ($reportType === 'amarchal') {
-        $sheet->getColumnDimension('A')->setWidth(20); // גזבר
-        $sheet->getColumnDimension('B')->setWidth(15); // משפחה
-        $sheet->getColumnDimension('C')->setWidth(15); // שם
-        $sheet->getColumnDimension('D')->setWidth(15); // נייד בעל
-        $sheet->getColumnDimension('E')->setWidth(30); // כתובת
-        $sheet->getColumnDimension('F')->setWidth(8);  // קומה
-        $sheet->getColumnDimension('G')->setWidth(15); // עיר
-    } else {
-        $sheet->getColumnDimension('A')->setWidth(15); // משפחה
-        $sheet->getColumnDimension('B')->setWidth(15); // שם
-        $sheet->getColumnDimension('C')->setWidth(15); // נייד בעל
-        $sheet->getColumnDimension('D')->setWidth(30); // כתובת
-        $sheet->getColumnDimension('E')->setWidth(8);  // קומה
-        $sheet->getColumnDimension('F')->setWidth(15); // עיר
-    }
+        // Set minimum widths for readability
+        if ($reportType === 'amarchal') {
+            $sheet->getColumnDimension('A')->setWidth(20); // גזבר
+            $sheet->getColumnDimension('B')->setWidth(15); // משפחה
+            $sheet->getColumnDimension('C')->setWidth(15); // שם
+            $sheet->getColumnDimension('D')->setWidth(15); // נייד בעל
+            $sheet->getColumnDimension('E')->setWidth(30); // כתובת
+            $sheet->getColumnDimension('F')->setWidth(8);  // קומה
+            $sheet->getColumnDimension('G')->setWidth(15); // עיר
+        } else {
+            $sheet->getColumnDimension('A')->setWidth(15); // משפחה
+            $sheet->getColumnDimension('B')->setWidth(15); // שם
+            $sheet->getColumnDimension('C')->setWidth(15); // נייד בעל
+            $sheet->getColumnDimension('D')->setWidth(30); // כתובת
+            $sheet->getColumnDimension('E')->setWidth(8);  // קומה
+            $sheet->getColumnDimension('F')->setWidth(15); // עיר
+        }
+    } // End of if ($needsSpreadsheet)
 }
 
-// Remove default sheet if exists
-if ($spreadsheet->getSheetCount() > count($selected)) {
+// Remove default sheet if exists (only if we created spreadsheet)
+if ($needsSpreadsheet && $spreadsheet && $spreadsheet->getSheetCount() > count($selected)) {
     try {
         $spreadsheet->removeSheetByIndex(0);
     } catch (Exception $e) {
@@ -282,31 +312,40 @@ if ($spreadsheet->getSheetCount() > count($selected)) {
     }
 }
 
-// Set first sheet as active
-if ($spreadsheet->getSheetCount() > 0) {
+// Set first sheet as active (only if we created spreadsheet)
+if ($needsSpreadsheet && $spreadsheet && $spreadsheet->getSheetCount() > 0) {
     $spreadsheet->setActiveSheetIndex(0);
 }
 
 // Generate filename
 $reportTypeHe = $reportType === 'amarchal' ? 'אמרכלים' : 'גזברים';
-$filename = 'דוח_' . $reportTypeHe . '_' . date('Y-m-d_H-i-s') . '.pdf';
+$baseFilename = 'דוח_' . $reportTypeHe . '_' . date('Y-m-d_H-i-s');
+if (!empty($partLabel)) {
+    $baseFilename .= '_' . $partLabel;
+}
+$filename = $baseFilename . '.pdf';
 
-// Check if mPDF library is available
+// Check if mPDF library is available (only relevant if we need PDF output)
 if (!class_exists('\Mpdf\Mpdf')) {
-    // If mPDF is not available, export as Excel instead
-    $filename = str_replace('.pdf', '.xlsx', $filename);
-    
-    if (ob_get_length()) { 
-        ob_end_clean(); 
+    // If mPDF is not available, export as Excel instead (only if we have spreadsheet data)
+    if ($needsSpreadsheet && $spreadsheet) {
+        $filename = str_replace('.pdf', '.xlsx', $filename);
+        
+        if (ob_get_length()) { 
+            ob_end_clean(); 
+        }
+        
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+        $writer->save('php://output');
+        exit;
+    } else {
+        // Cannot create PDF without mPDF library
+        die('שגיאה: ספריית mPDF אינה זמינה. לא ניתן ליצור PDF.');
     }
-    
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Cache-Control: max-age=0');
-    
-    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
-    $writer->save('php://output');
-    exit;
 }
 
 // Create PDF
@@ -324,6 +363,8 @@ try {
     }
 
     if ($outputType === 'labels') {
+        error_log("Print PDF Labels: Creating mPDF instance for labels");
+        
         $mpdf = new \Mpdf\Mpdf([
             'mode' => 'utf-8',
             'format' => [210, 296.9],
@@ -333,6 +374,8 @@ try {
             'margin_bottom' => 15,
         ]);
         $mpdf->SetDirectionality('rtl');
+
+        error_log("Print PDF Labels: mPDF instance created");
 
         $labelsCss = "@page { margin: 15mm 0; }\n" .
             "body { direction: rtl; font-family: DejaVu Sans, sans-serif; font-size: 12pt; color: #111; margin: 0; }\n" .
@@ -420,20 +463,41 @@ try {
             }
         }
 
-        $html = '';
-        $perPage = 21;
-        $groupKeys = array_keys($labelsByGroup);
-        $groupCount = count($groupKeys);
-        foreach ($groupKeys as $groupIndex => $groupKey) {
+        error_log("Print PDF Labels: Building HTML for " . count($labelsByGroup) . " groups, total labels ≈ $estimatedLabels");
+        
+        // Split large jobs into chunks to avoid memory issues
+        $maxLabelsPerPdf = 500; // Maximum labels in single PDF
+        $totalEstimatedLabels = array_sum(array_map('count', $labelsByGroup));
+        
+        if ($totalEstimatedLabels > $maxLabelsPerPdf) {
+            error_log("WARNING: Total labels ($totalEstimatedLabels) exceeds max per PDF ($maxLabelsPerPdf)");
+            // Note: For now we'll try anyway with increased limits, but log the warning
+        }
+        
+        // Write CSS first
+        try {
+            $mpdf->WriteHTML($labelsCss, \Mpdf\HTMLParserMode::HEADER_CSS);
+        
+            error_log("Print PDF Labels: Writing HTML in chunks to avoid pcre.backtrack_limit");
+        
+            $perPage = 21;
+            $groupKeys = array_keys($labelsByGroup);
+            $groupCount = count($groupKeys);
+        
+            // Process each group and write to mPDF incrementally
+            foreach ($groupKeys as $groupIndex => $groupKey) {
             $groupLabels = $labelsByGroup[$groupKey];
             $totalLabels = count($groupLabels);
+            
             for ($i = 0; $i < $totalLabels; $i += $perPage) {
                 $slice = array_slice($groupLabels, $i, $perPage);
-                $html .= '<div class="labels-page">';
-                $html .= '<table class="labels-table">';
+                
+                // Build HTML for this page only
+                $pageHtml = '<div class="labels-page">';
+                $pageHtml .= '<table class="labels-table">';
 
                 for ($r = 0; $r < 7; $r++) {
-                    $html .= '<tr>';
+                    $pageHtml .= '<tr>';
                     for ($c = 0; $c < 3; $c++) {
                         $index = $r * 3 + $c;
                         if (isset($slice[$index])) {
@@ -456,35 +520,74 @@ try {
                                 return '<div style="display:block; padding-bottom: 10px; line-height:1.6;">' . $line . '</div>';
                             }, $lines);
                             $cellHtml = '<div class="label-inner">' . implode('', $lineDivs) . '</div>';
-                            $html .= '<td>' . $cellHtml . '</td>';
+                            $pageHtml .= '<td>' . $cellHtml . '</td>';
                         } else {
-                            $html .= '<td></td>';
+                            $pageHtml .= '<td></td>';
                         }
                     }
-                    $html .= '</tr>';
+                    $pageHtml .= '</tr>';
                 }
 
-                $html .= '</table>';
-                $html .= '</div>';
+                $pageHtml .= '</table>';
+                $pageHtml .= '</div>';
+                
                 if ($i + $perPage < $totalLabels) {
-                    $html .= '<div class="page-break"></div>';
+                    $pageHtml .= '<div class="page-break"></div>';
                 }
+                
+                // Write this page to mPDF immediately
+                $mpdf->WriteHTML($pageHtml, \Mpdf\HTMLParserMode::HTML_BODY);
+                
+                // Free memory
+                unset($pageHtml);
             }
 
             if ($groupIndex < $groupCount - 1) {
-                $html .= '<div class="page-break"></div>';
+                $mpdf->WriteHTML('<div class="page-break"></div>', \Mpdf\HTMLParserMode::HTML_BODY);
+            }
+            
+            // Free memory after each group
+            unset($labelsByGroup[$groupKey]);
+            if ($groupIndex % 5 === 0) {
+                gc_collect_cycles();
             }
         }
+        
+        // Free all remaining memory
+        unset($labelsByGroup);
+        gc_collect_cycles();
 
-        $mpdf->WriteHTML($labelsCss, \Mpdf\HTMLParserMode::HEADER_CSS);
-        $mpdf->WriteHTML($html, \Mpdf\HTMLParserMode::HTML_BODY);
+        error_log("Print PDF Labels: mPDF processing complete, outputting...");
 
-        header('Content-Type: application/pdf');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
-        header('Cache-Control: max-age=0');
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: attachment; filename="' . $filename . '"');
+            header('Cache-Control: max-age=0');
 
-        $mpdf->Output($filename, \Mpdf\Output\Destination::INLINE);
-        exit;
+            $mpdf->Output($filename, \Mpdf\Output\Destination::INLINE);
+            error_log("Print PDF Labels: Output complete");
+            exit;
+            
+        } catch (Exception $e) {
+            error_log("Print PDF Labels Error: " . $e->getMessage());
+            
+            if (ob_get_length()) { 
+                ob_end_clean(); 
+            }
+            
+            http_response_code(500);
+            echo "<!DOCTYPE html><html dir='rtl'><head><meta charset='utf-8'><title>שגיאה</title></head><body>";
+            echo "<h2>שגיאה ביצירת PDF מדבקות</h2>";
+            echo "<p><strong>סיבה:</strong> " . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8') . "</p>";
+            echo "<h3>פתרונות אפשריים:</h3>";
+            echo "<ul>";
+            echo "<li>בחר פחות גזברים בכל פעם (עד 30-40)</li>";
+            echo "<li>בחר חודש אחד בכל פעם במקום כמה חודשים</li>";
+            echo "<li>פצל את ההדפסה למספר קבצי PDF נפרדים</li>";
+            echo "</ul>";
+            echo "<p><a href='people.php'>חזור לדף אנשים</a></p>";
+            echo "</body></html>";
+            exit;
+        }
     }
 
     $mpdf = new \Mpdf\Mpdf([
@@ -657,19 +760,30 @@ try {
     $mpdf->Output($filename, \Mpdf\Output\Destination::INLINE);
 
 } catch (Exception $e) {
-    // If PDF generation fails, fall back to Excel
-    $filename = str_replace('.pdf', '.xlsx', $filename);
+    error_log("Print PDF Error: " . $e->getMessage());
     
-    if (ob_get_length()) { 
-        ob_end_clean(); 
+    // If PDF generation fails, fall back to Excel (only if we have spreadsheet data)
+    if ($needsSpreadsheet && $spreadsheet) {
+        $filename = str_replace('.pdf', '.xlsx', $filename);
+        
+        if (ob_get_length()) { 
+            ob_end_clean(); 
+        }
+        
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        
+        $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
+        $writer->save('php://output');
+    } else {
+        // Cannot create any output
+        if (ob_get_length()) { 
+            ob_end_clean(); 
+        }
+        http_response_code(500);
+        echo "שגיאה ביצירת PDF: " . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
     }
-    
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Cache-Control: max-age=0');
-    
-    $writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($spreadsheet, 'Xlsx');
-    $writer->save('php://output');
 }
 
 exit;

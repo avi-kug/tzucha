@@ -19,7 +19,7 @@ if (!headers_sent()) {
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
-    header("Content-Security-Policy: default-src 'self' https:; script-src 'self' https: 'unsafe-inline'; style-src 'self' https: 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https://ipapi.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    header("Content-Security-Policy: default-src 'self' https:; script-src 'self' https:; style-src 'self' https: 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https://ipapi.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
 }
 
 function auth_is_logged_in() {
@@ -39,7 +39,7 @@ function role_permissions($role) {
         case 'admin':
             return ['*'];
         case 'manager':
-            return ['home','people','alphon','supports','expenses','incomes'];
+            return [];
         case 'viewer':
         default:
             return ['home','people','alphon'];

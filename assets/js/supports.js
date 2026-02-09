@@ -11,11 +11,10 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeModals();
     initializeEventListeners();
     loadPeopleList();
-    // הצג כברירת מחדל את טאב הסיכום
-    document.getElementById('summary-tab').style.display = '';
-    document.getElementById('summary-tab').classList.add('active');
-    document.getElementById('data-tab').style.display = 'none';
-    document.getElementById('data-tab').classList.remove('active');
+    // בדוק hash ב-URL, אם אין - ברירת מחדל summary
+    const hash = window.location.hash.replace('#', '');
+    const initialTab = (hash === 'data' || hash === 'summary') ? hash : 'summary';
+    switchTab(initialTab);
     loadSupportsData();
 });
 
@@ -29,9 +28,20 @@ function initializeTabs() {
             switchTab(tabName);
         });
     });
+
+    // Listen for browser back/forward navigation
+    window.addEventListener('hashchange', function() {
+        const hash = window.location.hash.replace('#', '');
+        if ((hash === 'data' || hash === 'summary') && hash !== currentTab) {
+            switchTab(hash);
+        }
+    });
 }
 
 function switchTab(tabName) {
+    // Update URL hash
+    window.history.pushState(null, '', '#' + tabName);
+    
     // Update buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active');
@@ -203,7 +213,7 @@ function renderSummaryTable(data) {
     data.forEach(support => {
         const row = document.createElement('tr');
         
-        const address = `${support.street || ''}, ${support.city || ''}`.trim().replace(/^,\s*/, '');
+        const address = support.street || '';
         
         totalIncome += parseFloat(support.total_income || 0);
         totalExpenses += parseFloat(support.total_expenses || 0);
@@ -212,7 +222,7 @@ function renderSummaryTable(data) {
         row.innerHTML = `
             <td>${support.first_name || ''}</td>
             <td>${support.last_name || ''}</td>
-            <td>${support.id_number || ''}</td>
+            <td>${support.donor_number || ''}</td>
             <td>${address}</td>
             <td>${support.city || ''}</td>
             <td>${formatCurrency(support.total_income)}</td>
@@ -222,10 +232,10 @@ function renderSummaryTable(data) {
             <td><strong>${formatCurrency(support.support_amount)}</strong></td>
             <td>
                 <button class="btn btn-sm btn-primary edit-support-btn" data-id="${support.id}">
-                    <i class="fas fa-edit"></i>
+                    <i class="bi bi-pencil"></i>
                 </button>
                 <button class="btn btn-sm btn-danger delete-support-btn" data-id="${support.id}">
-                    <i class="fas fa-trash"></i>
+                    <i class="bi bi-trash"></i>
                 </button>
             </td>
         `;
@@ -302,10 +312,10 @@ function renderDataTable(data) {
             <td>${support.transaction_number || ''}</td>
             <td>
                 <button class="btn btn-sm btn-primary edit-support-btn" data-id="${support.id}">
-                    <i class="fas fa-edit"></i>
+                    <i class="bi bi-pencil"></i>
                 </button>
                 <button class="btn btn-sm btn-danger delete-support-btn" data-id="${support.id}">
-                    <i class="fas fa-trash"></i>
+                    <i class="bi bi-trash"></i>
                 </button>
             </td>
         `;
@@ -477,7 +487,6 @@ async function deleteSupport(supportId) {
         const result = await response.json();
         
         if (result.success) {
-            showAlert('success', result.message);
             loadSupportsData();
         } else {
             showAlert('error', result.error || 'שגיאה במחיקת הרשומה');
@@ -501,7 +510,7 @@ async function importFromExcel(file) {
     }
     
     try {
-        showAlert('info', 'מייבא נתונים...');
+        showAlert('info', 'מייבא נתונים מהקובץ...');
         
         const response = await fetch('supports_api.php', {
             method: 'POST',
@@ -514,11 +523,14 @@ async function importFromExcel(file) {
         const result = await response.json();
         
         if (result.success) {
-            showAlert('success', result.message);
+            // Show results in modal instead of alert
+            showImportResultsModal(result);
             
             // Show linking modal if needed
             if (result.needs_linking && result.needs_linking.length > 0) {
-                showLinkPersonModal(result.needs_linking);
+                setTimeout(() => {
+                    showLinkPersonModal(result.needs_linking);
+                }, 500);
             }
             
             loadSupportsData();
@@ -534,9 +546,56 @@ async function importFromExcel(file) {
     }
 }
 
+// Show Import Results Modal
+function showImportResultsModal(result) {
+    const modal = document.getElementById('importResultsModal');
+    const content = document.getElementById('importResultsContent');
+    
+    let html = `
+        <div class="import-summary">
+            <h4>סיכום ייבוא</h4>
+            <div class="import-stats">
+                <div class="stat-item success">
+                    <i class="bi bi-check-circle"></i>
+                    <span class="stat-number">${result.imported || 0}</span>
+                    <span class="stat-label">נוספו</span>
+                </div>
+                <div class="stat-item info">
+                    <i class="bi bi-arrow-repeat"></i>
+                    <span class="stat-number">${result.updated || 0}</span>
+                    <span class="stat-label">עודכנו</span>
+                </div>
+                ${result.skipped > 0 ? `
+                <div class="stat-item warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <span class="stat-number">${result.skipped}</span>
+                    <span class="stat-label">דולגו</span>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    // Show errors if any
+    if (result.errors && result.errors.length > 0) {
+        html += `
+            <div class="import-errors">
+                <h4>שגיאות</h4>
+                <div class="errors-list">
+                    ${result.errors.map(err => `<div class="error-item"><i class="bi bi-x-circle"></i> ${err}</div>`).join('')}
+                </div>
+            </div>
+        `;
+    }
+    
+    content.innerHTML = html;
+    modal.style.display = 'block';
+}
+
 // Export to Excel
 function exportToExcel() {
-    window.location.href = 'supports_api.php?action=export_excel';
+    const tab = currentTab === 'summary' ? 'summary' : 'data';
+    window.location.href = `supports_api.php?action=export_excel&tab=${tab}`;
 }
 
 // Show Link Person Modal

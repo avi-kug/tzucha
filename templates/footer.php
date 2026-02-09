@@ -14,21 +14,5 @@
     <script src="https://cdn.jsdelivr.net/npm/colresizable/colResizable-1.6.min.js"></script>
     <?php $jsV = @filemtime(__DIR__ . '/../assets/js/script.js') ?: '20260127'; ?>
     <script src="../assets/js/script.js?v=<?php echo $jsV; ?>"></script>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var meta = document.querySelector('meta[name="csrf-token"]');
-        if (!meta) { return; }
-        var token = meta.getAttribute('content') || '';
-        if (!token) { return; }
-        document.querySelectorAll('form[method="post"], form[method="POST"]').forEach(function(form) {
-            if (form.querySelector('input[name="csrf_token"]')) { return; }
-            var input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'csrf_token';
-            input.value = token;
-            form.appendChild(input);
-        });
-    });
-    </script>
 </body>
 </html>

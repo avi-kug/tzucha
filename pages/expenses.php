@@ -99,8 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $currentMonth = date('Y-m');
             $stmt = $pdo->prepare("INSERT INTO summary_expenses (date, for_what, store, amount, department, category, expense_type, paid_by, from_account, invoice_copy) SELECT date, for_what, store, amount, department, category, expense_type, paid_by, from_account, invoice_copy FROM fixed_expenses WHERE DATE_FORMAT(date, '%Y-%m') = ?");
             $stmt->execute([$currentMonth]);
-            echo "<script>alert('הוצאות הועתקו בהצלחה לסיכום השנתי!');</script>";
-            echo "<script>window.location.href = 'expenses.php';</script>";
+            $_SESSION['message'] = 'הוצאות הועתקו בהצלחה לסיכום השנתי!';
+            header('Location: expenses.php');
             exit;
         } elseif ($action == 'bulk_set_fixed_month') {
             $targetMonth = isset($_POST['target_month']) ? trim($_POST['target_month']) : '';
@@ -208,8 +208,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 // Check file extension
                 if (!in_array($fileExtension, ['xlsx', 'xls', 'xlsm'])) {
-                    echo "<script>alert('נא להעלות קובץ Excel בלבד (.xlsx או .xls)');</script>";
-                    echo "<script>window.location.href = 'expenses.php';</script>";
+                    $_SESSION['message'] = 'נא להעלות קובץ Excel בלבד (.xlsx או .xls).';
+                    header('Location: expenses.php');
                     exit;
                 }
                 
@@ -268,11 +268,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         }
                     }
                     $_SESSION['message'] = nl2br(htmlspecialchars($summaryMsg, ENT_QUOTES, 'UTF-8'));
-                    echo "<script>window.location.href = 'expenses.php';</script>";
+                    header('Location: expenses.php');
                     exit;
                 } catch (Exception $e) {
-                    echo "<script>alert('שגיאה בטעינת הקובץ: הקובץ אינו תקין או פגום. נא להעלות קובץ Excel תקין.');</script>";
-                    echo "<script>window.location.href = 'expenses.php';</script>";
+                    $_SESSION['message'] = 'שגיאה בטעינת הקובץ: הקובץ אינו תקין או פגום. נא להעלות קובץ Excel תקין.';
+                    header('Location: expenses.php');
                     exit;
                 }
             }
@@ -389,8 +389,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $existingInvoice = isset($_POST['existing_invoice_copy']) ? $_POST['existing_invoice_copy'] : '';
                 $invoicePath = handleInvoiceUpload('invoice_copy_file', $existingInvoice);
             } catch (Exception $e) {
-                echo "<script>alert('" . addslashes($e->getMessage()) . "');</script>";
-                echo "<script>window.location.href = 'expenses.php?tab=" . (isset($_POST['current_tab']) ? $_POST['current_tab'] : '') . "';</script>";
+                $currentTab = isset($_POST['current_tab']) ? $_POST['current_tab'] : '';
+                $_SESSION['message'] = $e->getMessage();
+                header('Location: expenses.php?tab=' . urlencode($currentTab));
                 exit;
             }
 
@@ -480,8 +481,8 @@ while ($row = $expenseTypesQuery->fetch()) {
 function renderImportExportButtons($importAction, $exportAction, $tableId = '')
 {
     $tableAttr = $tableId ? " data-table-id=\"{$tableId}\"" : '';
-    return "<button type=\"button\" class=\"btn btn-brand\" data-bs-toggle=\"modal\" data-bs-target=\"#importModal\" onclick=\"setImportAction('{$importAction}')\">ייבא מ-Excel</button>\n" .
-        "<form method=\"post\" style=\"display: inline; margin: 0;\"{$tableAttr}>\n" .
+    return "<button type=\"button\" class=\"btn btn-brand\" data-bs-toggle=\"modal\" data-bs-target=\"#importModal\" data-import-action=\"{$importAction}\">ייבא מ-Excel</button>\n" .
+        "<form method=\"post\" class=\"inline-form\"{$tableAttr}>\n" .
         "    <input type=\"hidden\" name=\"action\" value=\"{$exportAction}\">\n" .
         "    <input type=\"hidden\" name=\"order_by\" value=\"\">\n" .
         "    <input type=\"hidden\" name=\"order_dir\" value=\"\">\n" .
@@ -509,7 +510,7 @@ function renderExpensesTableHead($includeSource = false)
 
 function renderDeleteForm($action, $id, $currentTab, $extraFields = [])
 {
-    $form = "<form method='post' style='display: inline;'>";
+    $form = "<form method='post' class='inline-form'>";
     $form .= "<input type='hidden' name='action' value='{$action}'>";
     $form .= "<input type='hidden' name='id' value='{$id}'>";
     foreach ($extraFields as $name => $value) {
@@ -518,7 +519,7 @@ function renderDeleteForm($action, $id, $currentTab, $extraFields = [])
     if ($currentTab) {
         $form .= "<input type='hidden' name='current_tab' value='{$currentTab}'>";
     }
-    $form .= "<button type='submit' class='btn btn-sm btn-brand' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק הוצאה זו?\")'>מחק</button>";
+    $form .= "<button type='submit' class='btn btn-sm btn-brand' data-confirm=\"האם אתה בטוח שברצונך למחוק הוצאה זו?\">מחק</button>";
     $form .= "</form>";
 
     return $form;
@@ -542,7 +543,7 @@ function renderSimpleTable($headers, $rows, $tableClass = 'table table-striped')
     }
     $tbody .= '</tbody>';
 
-    return '<div class="table-scroll" style="max-height: 300px;"><table class="' . $tableClass . ' mb-0">' . $thead . $tbody . '</table></div>';
+    return '<div class="table-scroll table-scroll-compact"><table class="' . $tableClass . ' mb-0">' . $thead . $tbody . '</table></div>';
 }
 
 function renderEditButton($type, $row)
@@ -564,7 +565,7 @@ function renderEditButton($type, $row)
     foreach ($attrs as $k => $v) {
         $attrs[$k] = htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
     }
-    return "<button class='btn btn-sm btn-brand' data-bs-toggle='modal' data-bs-target='#editExpenseModal' data-type='{$attrs['type']}' data-id='{$attrs['id']}' data-date='{$attrs['date']}' data-for_what='{$attrs['for_what']}' data-store='{$attrs['store']}' data-amount='{$attrs['amount']}' data-department='{$attrs['department']}' data-category='{$attrs['category']}' data-expense_type='{$attrs['expense_type']}' data-paid_by='{$attrs['paid_by']}' data-from_account='{$attrs['from_account']}' data-invoice_copy='{$attrs['invoice_copy']}' onclick='editExpense(this)'>ערוך</button>";
+    return "<button class='btn btn-sm btn-brand js-edit-expense' data-bs-toggle='modal' data-bs-target='#editExpenseModal' data-type='{$attrs['type']}' data-id='{$attrs['id']}' data-date='{$attrs['date']}' data-for_what='{$attrs['for_what']}' data-store='{$attrs['store']}' data-amount='{$attrs['amount']}' data-department='{$attrs['department']}' data-category='{$attrs['category']}' data-expense_type='{$attrs['expense_type']}' data-paid_by='{$attrs['paid_by']}' data-from_account='{$attrs['from_account']}' data-invoice_copy='{$attrs['invoice_copy']}'>ערוך</button>";
 }
 
 function formatInvoiceCopy($path)
@@ -679,6 +680,8 @@ function ensureExpenseTypeExists(PDO $pdo, $categoryName, $expenseTypeName)
 }
 ?>
 <?php include '../templates/header.php'; ?>
+<link rel="stylesheet" href="../assets/css/expenses.css">
+<link rel="stylesheet" href="../assets/css/people.css">
 <h2>הוצאות</h2>
 <?php if ($message): ?>
 <!-- Summary Message Modal -->
@@ -697,16 +700,6 @@ function ensureExpenseTypeExists(PDO $pdo, $categoryName, $expenseTypeName)
             </div>
         </div>
     </div>
-    
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var el = document.getElementById('messageModal');
-        if (el) {
-            var modal = new bootstrap.Modal(el);
-            modal.show();
-        }
-    });
-    </script>
 </div>
 <?php endif; ?>
 <?php
@@ -762,40 +755,29 @@ if (!in_array($activeTab, $allowedTabs, true)) {
             <a id="clearFiltersLink" class="btn btn-brand-outline" href="expenses.php<?php echo $activeTab ? '?tab=' . urlencode($activeTab) : ''; ?>">נקה סינון</a>
         </div>
     </form>
-    <ul class="nav nav-tabs" id="expensesTabs" role="tablist">
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab === 'fixed') ? 'active' : ''; ?>" id="fixed-tab" data-bs-toggle="tab" href="expenses.php?tab=fixed" data-bs-target="#fixed" role="tab" aria-controls="fixed" aria-selected="<?php echo ($activeTab === 'fixed') ? 'true' : 'false'; ?>">הוצאות קבועות</a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab === 'regular') ? 'active' : ''; ?>" id="regular-tab" data-bs-toggle="tab" href="expenses.php?tab=regular" data-bs-target="#regular" role="tab" aria-controls="regular" aria-selected="<?php echo ($activeTab === 'regular') ? 'true' : 'false'; ?>">הוצאות רגילות</a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab === 'combined') ? 'active' : ''; ?>" id="combined-tab" data-bs-toggle="tab" href="expenses.php?tab=combined" data-bs-target="#combined" role="tab" aria-controls="combined" aria-selected="<?php echo ($activeTab === 'combined') ? 'true' : 'false'; ?>">סיכום שנתי</a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab === 'dashboard') ? 'active' : ''; ?>" id="dashboard-tab" data-bs-toggle="tab" href="expenses.php?tab=dashboard" data-bs-target="#dashboard" role="tab" aria-controls="dashboard" aria-selected="<?php echo ($activeTab === 'dashboard') ? 'true' : 'false'; ?>">דשבורד</a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab === 'data') ? 'active' : ''; ?>" id="data-tab" data-bs-toggle="tab" href="expenses.php?tab=data" data-bs-target="#data" role="tab" aria-controls="data" aria-selected="<?php echo ($activeTab === 'data') ? 'true' : 'false'; ?>">נתונים</a>
-    </li>
-</ul>
+    <div class="tabs-nav">
+        <button class="tab-btn <?php echo ($activeTab === 'fixed') ? 'active' : ''; ?>" data-tab="fixed">הוצאות קבועות</button>
+        <button class="tab-btn <?php echo ($activeTab === 'regular') ? 'active' : ''; ?>" data-tab="regular">הוצאות רגילות</button>
+        <button class="tab-btn <?php echo ($activeTab === 'combined') ? 'active' : ''; ?>" data-tab="combined">סיכום שנתי</button>
+        <button class="tab-btn <?php echo ($activeTab === 'dashboard') ? 'active' : ''; ?>" data-tab="dashboard">דשבורד</button>
+        <button class="tab-btn <?php echo ($activeTab === 'data') ? 'active' : ''; ?>" data-tab="data">נתונים</button>
+    </div>
 </div>
 
-<div class="content-body">
-<div class="tab-content" id="expensesTabsContent">
-    <div class="tab-pane fade <?php echo ($activeTab === 'fixed') ? 'show active' : ''; ?>" id="fixed" role="tabpanel" aria-labelledby="fixed-tab">
+<div class="tab-panel <?php echo ($activeTab === 'fixed') ? 'active' : ''; ?>" id="fixed-tab">
+        <div id="fixed">
         <div class="table-action-bar">
-            <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addExpenseModal" onclick="setModal('fixed')">הוסף הוצאה</button>
-            <form method="post" style="display: inline;">
+            <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addExpenseModal" data-modal-type="fixed">הוסף הוצאה</button>
+            <form method="post" class="inline-form">
                 <input type="hidden" name="action" value="copy_fixed">
                 <button type="submit" class="btn btn-brand">העתק הוצאות לסיכום</button>
             </form>
-            <form method="post" style="display: inline; margin-inline-start: 8px;">
+            <form method="post" class="inline-form inline-form-spaced">
                 <input type="hidden" name="action" value="bulk_set_fixed_month">
                 <input type="hidden" name="current_tab" value="fixed">
-                <label class="form-label" for="bulk_fixed_month" style="margin-inline-end:6px;"></label>
-                <input type="month" id="bulk_fixed_month" name="target_month" class="form-control d-inline-block" style="width:auto; display:inline-block; vertical-align:middle;" required>
-                <button type="submit" class="btn btn-brand" onclick="return confirm('האם לעדכן את חודש התאריך לכל השורות המוצגות בטבלת הוצאות קבועות?');">עדכן חודש</button>
+                <label class="form-label inline-label" for="bulk_fixed_month"></label>
+                <input type="month" id="bulk_fixed_month" name="target_month" class="form-control d-inline-block inline-month-input" required>
+                <button type="submit" class="btn btn-brand" data-confirm="האם לעדכן את חודש התאריך לכל השורות המוצגות בטבלת הוצאות קבועות?">עדכן חודש</button>
             </form>
             <?php echo renderImportExportButtons('import_fixed', 'export_fixed', 'fixedTable'); ?>
         </div>
@@ -818,10 +800,12 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                 </div>
             </div>
         </div>
+        </div>
     </div>
-    <div class="tab-pane fade <?php echo ($activeTab === 'regular') ? 'show active' : ''; ?>" id="regular" role="tabpanel" aria-labelledby="regular-tab">
+    <div class="tab-panel <?php echo ($activeTab === 'regular') ? 'active' : ''; ?>" id="regular-tab">
+        <div id="regular">
         <div class="table-action-bar">
-            <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addExpenseModal" onclick="setModal('regular')">הוסף הוצאה</button>
+            <button class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#addExpenseModal" data-modal-type="regular">הוסף הוצאה</button>
             <?php echo renderImportExportButtons('import_regular', 'export_regular', 'regularTable'); ?>
         </div>
         <div class="card">
@@ -843,14 +827,16 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                 </div>
             </div>
         </div>
+        </div>
     </div>
-    <div class="tab-pane fade <?php echo ($activeTab === 'data') ? 'show active' : ''; ?>" id="data" role="tabpanel" aria-labelledby="data-tab">
+    <div class="tab-panel <?php echo ($activeTab === 'data') ? 'active' : ''; ?>" id="data-tab">
+        <div id="data">
         <div class="pane-scroll">
         <!-- אגפים -->
         <div class="row mb-4">
             <div class="col-md-6">
                 <h5>אגפים</h5>
-                <div class="table-scroll" style="max-height: 300px;">
+                <div class="table-scroll table-scroll-compact">
                     <table class="table table-striped mb-0">
                         <thead>
                             <tr>
@@ -865,10 +851,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                                 echo "<tr>
                                     <td>{$safeDept}</td>
                                     <td>
-                                        <form method='post' style='display: inline;'>
+                                        <form method='post' class='inline-form'>
                                             <input type='hidden' name='action' value='delete_department'>
                                             <input type='hidden' name='delete_item' value='{$safeDept}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את האגף \\\"{$safeDept}\\\"\")'>מחק</button>
+                                            <button type='submit' class='btn btn-sm btn-danger' data-confirm=\"האם אתה בטוח שברצונך למחוק את האגף \\\"{$safeDept}\\\"\">מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -889,7 +875,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
             <!-- קטגוריות -->
             <div class="col-md-6">
                 <h5>קטגוריות</h5>
-                <div class="table-scroll" style="max-height: 300px;">
+                <div class="table-scroll table-scroll-compact">
                     <table class="table table-striped mb-0">
                         <thead>
                             <tr>
@@ -904,10 +890,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                                 echo "<tr>
                                     <td>{$safeCat}</td>
                                     <td>
-                                        <form method='post' style='display: inline;'>
+                                        <form method='post' class='inline-form'>
                                             <input type='hidden' name='action' value='delete_category'>
                                             <input type='hidden' name='delete_item' value='{$safeCat}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את הקטגוריה \\\"{$safeCat}\\\"\")'>מחק</button>
+                                            <button type='submit' class='btn btn-sm btn-danger' data-confirm=\"האם אתה בטוח שברצונך למחוק את הקטגוריה \\\"{$safeCat}\\\"\">מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -930,7 +916,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
         <div class="row mb-4">
             <div class="col-md-6">
                 <h5>סוגי הוצאות</h5>
-                <div class="table-scroll" style="max-height: 300px;">
+                <div class="table-scroll table-scroll-compact">
                     <table class="table table-striped mb-0">
                         <thead>
                             <tr>
@@ -950,10 +936,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                                         <td>{$catSafe}</td>
                                         <td>{$typeSafe}</td>
                                         <td>
-                                            <form method='post' style='display: inline;'>
+                                            <form method='post' class='inline-form'>
                                                 <input type='hidden' name='action' value='delete_expense_type'>
                                                 <input type='hidden' name='delete_item' value='{$typeSafe}'>
-                                                <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את סוג ההוצאה \\\"{$typeSafe}\\\"\")'>מחק</button>
+                                                <button type='submit' class='btn btn-sm btn-danger' data-confirm=\"האם אתה בטוח שברצונך למחוק את סוג ההוצאה \\\"{$typeSafe}\\\"\">מחק</button>
                                             </form>
                                         </td>
                                     </tr>";
@@ -981,7 +967,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
             <!-- שולם ע"י -->
             <div class="col-md-6">
                 <h5>שולם ע"י</h5>
-                <div class="table-scroll" style="max-height: 300px;">
+                <div class="table-scroll table-scroll-compact">
                     <table class="table table-striped mb-0">
                         <thead>
                             <tr>
@@ -996,10 +982,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                                 echo "<tr>
                                     <td>{$safeOpt}</td>
                                     <td>
-                                        <form method='post' style='display: inline;'>
+                                        <form method='post' class='inline-form'>
                                             <input type='hidden' name='action' value='delete_paid_by'>
                                             <input type='hidden' name='delete_item' value='{$safeOpt}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את האפשרות \\\"{$safeOpt}\\\"\")'>מחק</button>
+                                            <button type='submit' class='btn btn-sm btn-danger' data-confirm=\"האם אתה בטוח שברצונך למחוק את האפשרות \\\"{$safeOpt}\\\"\">מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -1022,7 +1008,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
         <div class="row mb-4">
             <div class="col-md-6">
                 <h5>יצא מ</h5>
-                <div class="table-scroll" style="max-height: 300px;">
+                <div class="table-scroll table-scroll-compact">
                     <table class="table table-striped mb-0">
                         <thead>
                             <tr>
@@ -1037,10 +1023,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                                 echo "<tr>
                                     <td>{$safeAcc}</td>
                                     <td>
-                                        <form method='post' style='display: inline;'>
+                                        <form method='post' class='inline-form'>
                                             <input type='hidden' name='action' value='delete_from_account'>
                                             <input type='hidden' name='delete_item' value='{$safeAcc}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את החשבון \\\"{$safeAcc}\\\"\")'>מחק</button>
+                                            <button type='submit' class='btn btn-sm btn-danger' data-confirm=\"האם אתה בטוח שברצונך למחוק את החשבון \\\"{$safeAcc}\\\"\">מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -1059,7 +1045,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
             </div>
             <div class="col-md-6">
                 <h5>חנויות</h5>
-                <div class="table-scroll" style="max-height: 300px;">
+                <div class="table-scroll table-scroll-compact">
                     <table class="table table-striped mb-0">
                         <thead>
                             <tr>
@@ -1074,10 +1060,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                                 echo "<tr>
                                     <td>{$safeStore}</td>
                                     <td>
-                                        <form method='post' style='display: inline;'>
+                                        <form method='post' class='inline-form'>
                                             <input type='hidden' name='action' value='delete_store'>
                                             <input type='hidden' name='delete_item' value='{$safeStore}'>
-                                            <button type='submit' class='btn btn-sm btn-danger' onclick='return confirm(\"האם אתה בטוח שברצונך למחוק את החנות \\\"{$safeStore}\\\"\")'>מחק</button>
+                                            <button type='submit' class='btn btn-sm btn-danger' data-confirm=\"האם אתה בטוח שברצונך למחוק את החנות \\\"{$safeStore}\\\"\">מחק</button>
                                         </form>
                                     </td>
                                 </tr>";
@@ -1097,7 +1083,9 @@ if (!in_array($activeTab, $allowedTabs, true)) {
         </div>
         </div>
     </div>
-    <div class="tab-pane fade <?php echo ($activeTab === 'combined') ? 'show active' : ''; ?>" id="combined" role="tabpanel" aria-labelledby="combined-tab">
+    </div>
+    <div class="tab-panel <?php echo ($activeTab === 'combined') ? 'active' : ''; ?>" id="combined-tab">
+        <div id="combined">
         <div class="table-action-bar">
             <?php echo renderImportExportButtons('import_summary', 'export_summary', 'combinedTable'); ?>
         </div>
@@ -1129,8 +1117,10 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                 </div>
             </div>
         </div>
+        </div>
     </div>
-    <div class="tab-pane fade <?php echo ($activeTab === 'dashboard') ? 'show active' : ''; ?>" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
+    <div class="tab-panel <?php echo ($activeTab === 'dashboard') ? 'active' : ''; ?>" id="dashboard-tab">
+        <div id="dashboard">
         <div class="pane-scroll">
         <div class="row">
             <div class="col-md-6">
@@ -1302,8 +1292,6 @@ if (!in_array($activeTab, $allowedTabs, true)) {
     </div>
 </div>
 
-</div>
-
 <!-- Add Expense Modal -->
 <div class="modal fade" id="addExpenseModal" tabindex="-1" aria-labelledby="addExpenseModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -1344,7 +1332,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                     </div>
                     <div class="mb-3">
                         <label for="category" class="form-label">קטגוריה</label>
-                        <select class="form-control" id="category" name="category" onchange="updateExpenseType()">
+                        <select class="form-control" id="category" name="category">
                             <option value="">בחר קטגוריה</option>
                             <?php foreach ($categories as $cat) { $c = htmlspecialchars($cat, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$c}\">{$c}</option>"; } ?>
                         </select>
@@ -1425,7 +1413,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                     </div>
                     <div class="mb-3">
                         <label for="edit_category" class="form-label">קטגוריה</label>
-                        <select class="form-control" id="edit_category" name="category" onchange="updateEditExpenseType()">
+                        <select class="form-control" id="edit_category" name="category">
                             <option value="">בחר קטגוריה</option>
                             <?php foreach ($categories as $cat) { $c = htmlspecialchars($cat, ENT_QUOTES, 'UTF-8'); echo "<option value=\"{$c}\">{$c}</option>"; } ?>
                         </select>
@@ -1453,7 +1441,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
                     <div class="mb-3">
                         <label for="edit_invoice_copy_file" class="form-label">העתק חשבונית (תמונה או PDF)</label>
                         <input type="file" class="form-control" id="edit_invoice_copy_file" name="invoice_copy_file" accept=".jpg,.jpeg,.png,.pdf">
-                        <div id="edit_invoice_copy_preview" style="margin-top: 6px;"></div>
+                        <div id="edit_invoice_copy_preview" class="invoice-preview"></div>
                         <div class="form-check mt-2">
                             <input class="form-check-input" type="checkbox" id="delete_invoice_copy" name="delete_invoice_copy" value="1">
                             <label class="form-check-label" for="delete_invoice_copy">מחק העתק חשבונית</label>
@@ -1495,261 +1483,18 @@ if (!in_array($activeTab, $allowedTabs, true)) {
     </div>
 </div>
 
+<div id="expensesData"
+     data-expense-types="<?php echo htmlspecialchars(json_encode($expenseTypes, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
+     data-dept-rows="<?php echo htmlspecialchars(json_encode(isset($deptRows)?$deptRows:[], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
+     data-category-rows="<?php echo htmlspecialchars(json_encode(isset($categoryRows)?$categoryRows:[], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
+     data-type-rows="<?php echo htmlspecialchars(json_encode(isset($typeRows)?$typeRows:[], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
+     data-from-account-rows="<?php echo htmlspecialchars(json_encode(isset($fromAccountRows)?$fromAccountRows:[], JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
+     data-fixed="<?php echo htmlspecialchars((string)(isset($fixed)?(float)$fixed:0), ENT_QUOTES, 'UTF-8'); ?>"
+     data-regular="<?php echo htmlspecialchars((string)(isset($regular)?(float)$regular:0), ENT_QUOTES, 'UTF-8'); ?>"></div>
+
 <!-- Chart.js for dashboard charts -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-// Initialize page-specific code
-console.log('Expenses page loaded');
-
-let expenseTypes = {};
-try {
-    expenseTypes = <?php echo json_encode($expenseTypes, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE); ?>;
-} catch(e) {
-    console.error('Failed to parse expenseTypes:', e);
-}
-
-function setModal(type) {
-    document.getElementById('action').value = 'add_' + type;
-}
-
-function setImportAction(action) {
-    document.getElementById('import_action').value = action;
-}
-
-function editExpense(button) {
-    const type = button.getAttribute('data-type');
-    document.getElementById('edit_action').value = 'edit_' + type;
-    document.getElementById('edit_id').value = button.getAttribute('data-id');
-    document.getElementById('edit_date').value = button.getAttribute('data-date');
-    document.getElementById('edit_for_what').value = button.getAttribute('data-for_what');
-    document.getElementById('edit_store').value = button.getAttribute('data-store');
-    document.getElementById('edit_amount').value = button.getAttribute('data-amount');
-    document.getElementById('edit_department').value = button.getAttribute('data-department');
-    document.getElementById('edit_category').value = button.getAttribute('data-category');
-    document.getElementById('edit_paid_by').value = button.getAttribute('data-paid_by');
-    document.getElementById('edit_from_account').value = button.getAttribute('data-from_account');
-    const invoicePath = button.getAttribute('data-invoice_copy') || '';
-    document.getElementById('existing_invoice_copy').value = invoicePath;
-    const preview = document.getElementById('edit_invoice_copy_preview');
-    if (preview) {
-        if (invoicePath) {
-            preview.innerHTML = `<div class="d-flex align-items-center gap-2">
-                <a href="${invoicePath}" target="_blank" rel="noopener">צפה בקובץ קיים</a>
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="clearExistingInvoice()">מחק</button>
-            </div>`;
-        } else {
-            preview.innerHTML = '';
-        }
-    }
-    const delChk = document.getElementById('delete_invoice_copy');
-    if (delChk) delChk.checked = false;
-    document.getElementById('edit_department').value = button.getAttribute('data-department');
-    document.getElementById('edit_category').value = button.getAttribute('data-category');
-    updateEditExpenseType();
-    document.getElementById('edit_expense_type').value = button.getAttribute('data-expense_type');
-    document.getElementById('edit_paid_by').value = button.getAttribute('data-paid_by');
-    document.getElementById('edit_from_account').value = button.getAttribute('data-from_account');
-}
-
-function clearExistingInvoice() {
-    const delChk = document.getElementById('delete_invoice_copy');
-    if (delChk) delChk.checked = true;
-    const preview = document.getElementById('edit_invoice_copy_preview');
-    if (preview) preview.innerHTML = '<span class="text-muted">לא מצורף קובץ</span>';
-    const fileInput = document.getElementById('edit_invoice_copy_file');
-    if (fileInput) fileInput.value = '';
-}
-
-function updateExpenseType() {
-    const category = document.getElementById('category').value;
-    const expenseTypeSelect = document.getElementById('expense_type');
-    expenseTypeSelect.innerHTML = '<option value="">בחר סוג הוצאה</option>';
-    if (expenseTypes[category]) {
-        expenseTypes[category].forEach(type => {
-            const option = document.createElement('option');
-            option.value = type;
-            option.text = type;
-            expenseTypeSelect.appendChild(option);
-        });
-    }
-}
-
-function updateEditExpenseType() {
-    const category = document.getElementById('edit_category').value;
-    const expenseTypeSelect = document.getElementById('edit_expense_type');
-    expenseTypeSelect.innerHTML = '<option value="">בחר סוג הוצאה</option>';
-    if (expenseTypes[category]) {
-        expenseTypes[category].forEach(type => {
-            const option = document.createElement('option');
-            option.value = type;
-            option.text = type;
-            expenseTypeSelect.appendChild(option);
-        });
-    }
-}
-
-// Initialize DataTable when DOM and jQuery are ready
-document.addEventListener('DOMContentLoaded', function () {
-    if (window.jQuery && $.fn && $.fn.DataTable) {
-        const dtOpts = {
-            language: {
-                search: "חיפוש:",
-                lengthMenu: "הצג _MENU_ רשומות בעמוד",
-                zeroRecords: "לא נמצאו רשומות מתאימות",
-                info: "מציג _START_ עד _END_ מתוך _TOTAL_ רשומות",
-                infoEmpty: "אין רשומות להצגה",
-                infoFiltered: "(מסונן מתוך _MAX_ רשומות)",
-                paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "קודם" }
-            },
-            order: [[0, 'desc']],
-            pageLength: 25
-        };
-
-        if ($('#combinedTable').length) {
-            $('#combinedTable').DataTable(dtOpts);
-        }
-        if ($('#fixedTable').length) {
-            $('#fixedTable').DataTable(dtOpts);
-        }
-        if ($('#regularTable').length) {
-            $('#regularTable').DataTable(dtOpts);
-        }
-    }
-});
-
-// Add current_tab to all forms on submit
-document.querySelectorAll('form').forEach(form => {
-    form.addEventListener('submit', function() {
-        const activePane = document.querySelector('.tab-pane.show.active');
-        if (activePane) {
-            let tabInput = form.querySelector('input[name="current_tab"]');
-            if (!tabInput) {
-                tabInput = document.createElement('input');
-                tabInput.type = 'hidden';
-                tabInput.name = 'current_tab';
-                form.appendChild(tabInput);
-            }
-            tabInput.value = activePane.id;
-        }
-    });
-});
-
-// Preserve active tab on filter submit
-const filterForm = document.getElementById('filterForm');
-if (filterForm) {
-    filterForm.addEventListener('submit', function () {
-        const activePane = document.querySelector('.tab-pane.show.active');
-        const tabInput = document.getElementById('filter_tab');
-        if (activePane && tabInput) {
-            tabInput.value = activePane.id;
-        }
-    });
-}
-
-// Capture current DataTables sort and pass to export forms
-(function() {
-    const headerToCol = {
-        'תאריך': 'date',
-        'עבור': 'for_what',
-        'חנות': 'store',
-        'סכום': 'amount',
-        'אגף': 'department',
-        'קטגוריה': 'category',
-        'סוג הוצאה': 'expense_type',
-        "שולם ע'י": 'paid_by',
-        'יצא מ': 'from_account',
-        'העתק חשבונית': 'invoice_copy',
-        'מקור': 'date'
-    };
-
-    function setOrderInputs(form) {
-        const tableId = form.getAttribute('data-table-id');
-        const orderByInput = form.querySelector('input[name="order_by"]');
-        const orderDirInput = form.querySelector('input[name="order_dir"]');
-        const searchInput = form.querySelector('input[name="search_term"]');
-        let col = 'date';
-        let dir = 'desc';
-        let search = '';
-        if (tableId) {
-            const tableEl = document.getElementById(tableId);
-            if (tableEl && window.jQuery && jQuery.fn && jQuery.fn.dataTable) {
-                try {
-                    const dt = jQuery(tableEl).DataTable();
-                    const order = dt.order();
-                    search = (typeof dt.search === 'function') ? dt.search() : '';
-                    if (order && order.length) {
-                        const idx = order[0][0];
-                        dir = (order[0][1] || 'desc').toLowerCase();
-                        const ths = tableEl.querySelectorAll('thead th');
-                        const headerText = ths[idx] ? ths[idx].textContent.trim() : '';
-                        if (headerText && headerToCol[headerText]) {
-                            col = headerToCol[headerText];
-                        }
-                    }
-                } catch (e) {
-                    // No DataTable instance; keep defaults
-                }
-            }
-        }
-        if (orderByInput) orderByInput.value = col;
-        if (orderDirInput) orderDirInput.value = (dir === 'asc' ? 'asc' : 'desc');
-        if (searchInput) searchInput.value = search;
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        document.querySelectorAll('form[data-table-id]')
-            .forEach(form => {
-                form.addEventListener('submit', function() { setOrderInputs(form); });
-            });
-    });
-})();
-
-// Dashboard charts
-(function() {
-    function renderPie(canvasId, rows, titleText) {
-        const el = document.getElementById(canvasId);
-        if (!el || !Array.isArray(rows) || !rows.length) return;
-        const labels = rows.map(r => (r && r[0]) ? String(r[0] || 'לא מוגדר') : 'לא מוגדר');
-        const data = rows.map(r => Number(r && r[1] ? r[1] : 0));
-        const colors = [
-            '#4dc9f6','#f67019','#f53794','#537bc4','#acc236','#166a8f',
-            '#00a950','#58595b','#8549ba','#ffcd56','#36a2eb','#ff9f40'
-        ];
-        const bg = labels.map((_, i) => colors[i % colors.length]);
-        new Chart(el, {
-            type: 'pie',
-            data: { labels, datasets: [{ data, backgroundColor: bg }] },
-            options: { responsive: true, plugins: { legend: { position: 'bottom' }, title: { display: !!titleText, text: titleText } } }
-        });
-    }
-
-    function renderDonut(canvasId, labels, values, titleText) {
-        const el = document.getElementById(canvasId);
-        if (!el) return;
-        const data = Array.isArray(values) ? values.map(v => Number(v || 0)) : [];
-        const colors = ['#36a2eb', '#ff6384'];
-        new Chart(el, {
-            type: 'doughnut',
-            data: { labels, datasets: [{ data, backgroundColor: colors }] },
-            options: { cutout: '55%', responsive: true, plugins: { legend: { position: 'bottom' }, title: { display: !!titleText, text: titleText } } }
-        });
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        const deptRows = <?php echo json_encode(isset($deptRows)?$deptRows:[], JSON_UNESCAPED_UNICODE); ?>;
-        const categoryRows = <?php echo json_encode(isset($categoryRows)?$categoryRows:[], JSON_UNESCAPED_UNICODE); ?>;
-        const typeRows = <?php echo json_encode(isset($typeRows)?$typeRows:[], JSON_UNESCAPED_UNICODE); ?>;
-        const fromAccountRows = <?php echo json_encode(isset($fromAccountRows)?$fromAccountRows:[], JSON_UNESCAPED_UNICODE); ?>;
-        const fixedVal = <?php echo json_encode(isset($fixed)?(float)$fixed:0, JSON_UNESCAPED_UNICODE); ?>;
-        const regularVal = <?php echo json_encode(isset($regular)?(float)$regular:0, JSON_UNESCAPED_UNICODE); ?>;
-
-        renderPie('deptChart', deptRows, 'התפלגות אגפים');
-        renderPie('categoryChart', categoryRows, 'התפלגות קטגוריות');
-        renderPie('typeChart', typeRows, 'התפלגות סוגי הוצאה');
-        renderPie('fromAccountChart', fromAccountRows, 'התפלגות מקורות תשלום');
-        renderDonut('overallChart', ['קבועה','רגילה'], [fixedVal, regularVal], 'התפלגות כללית');
-    });
-})();
-</script>
+<?php $expensesJsV = @filemtime(__DIR__ . '/../assets/js/expenses.js') ?: time(); ?>
+<script src="../assets/js/expenses.js?v=<?php echo $expensesJsV; ?>"></script>
 
 <?php include '../templates/footer.php'; ?>

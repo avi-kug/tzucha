@@ -266,6 +266,56 @@
         renderDonut('overallChart', ['קבועה','רגילה'], [fixedVal, regularVal], 'התפלגות כללית');
     }
 
+    // Initialize Tabs
+    function initializeTabs() {
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        console.log('initializeTabs: Found', tabButtons.length, 'tab buttons');
+        
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const tabName = this.dataset.tab || this.getAttribute('data-tab');
+                console.log('Tab clicked:', tabName);
+                
+                switchTab(tabName);
+                
+                // Update cookie and URL
+                document.cookie = 'expenses_tab=' + tabName + '; path=/; max-age=31536000';
+                const url = new URL(window.location);
+                url.searchParams.set('tab', tabName);
+                window.history.replaceState({}, '', url);
+            });
+        });
+    }
+
+    function switchTab(tabName) {
+        console.log('Switching to tab:', tabName);
+        
+        // Update buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
+        if (targetBtn) {
+            targetBtn.classList.add('active');
+            console.log('Activated button for:', tabName);
+        }
+        
+        // Update content
+        document.querySelectorAll('.tab-panel').forEach(panel => {
+            panel.classList.remove('active');
+        });
+        const targetContent = document.getElementById(`${tabName}-tab`);
+        if (targetContent) {
+            targetContent.classList.add('active');
+            console.log('Showing panel:', tabName + '-tab');
+        } else {
+            console.error('Panel not found:', tabName + '-tab');
+        }
+    }
+
     document.addEventListener('click', function(event) {
         const modalBtn = event.target.closest('[data-modal-type]');
         if (modalBtn) {
@@ -300,6 +350,11 @@
     });
 
     document.addEventListener('DOMContentLoaded', function () {
+        console.log('Expenses JS - DOM Content Loaded');
+        
+        // Initialize tabs first
+        initializeTabs();
+        
         const categoryEl = document.getElementById('category');
         if (categoryEl) {
             categoryEl.addEventListener('change', updateExpenseType);
@@ -309,6 +364,7 @@
         if (editCategoryEl) {
             editCategoryEl.addEventListener('change', updateEditExpenseType);
         }
+        
         showMessageModal();
         initDataTables();
         bindFormTabPreserve();

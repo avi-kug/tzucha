@@ -79,6 +79,66 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+        console.log('Users JS - DOM Content Loaded');
+        console.log('About to initialize tabs...');
+        initTabs();
         tryInit(0);
     });
+
+    function initTabs() {
+        console.log('initTabs() called (users)');
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabPanels = document.querySelectorAll('.tab-panel');
+
+        console.log('Found tab buttons:', tabBtns.length);
+        console.log('Found tab panels:', tabPanels.length);
+
+        if (tabBtns.length === 0) {
+            console.error('No tab buttons found!');
+            return;
+        }
+
+        tabBtns.forEach((btn, index) => {
+            const tabName = btn.getAttribute('data-tab');
+            console.log('Setting up button', index, tabName);
+            
+            btn.addEventListener('click', function(e) {
+                try {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const targetTab = this.getAttribute('data-tab');
+                    
+                    console.log('Tab clicked:', targetTab);
+                    
+                    // Remove active class from all buttons
+                    tabBtns.forEach(b => {
+                        b.classList.remove('active');
+                    });
+                    // Add active class to clicked button
+                    this.classList.add('active');
+                    
+                    // Hide all tab panels
+                    tabPanels.forEach(panel => {
+                        panel.classList.remove('active');
+                        console.log('Hiding panel:', panel.id);
+                    });
+                    
+                    // Show target panel
+                    const targetPanel = document.getElementById(targetTab + '-tab');
+                    if (targetPanel) {
+                        targetPanel.classList.add('active');
+                        console.log('Showing panel:', targetTab + '-tab');
+                    } else {
+                        console.error('Panel not found:', targetTab + '-tab');
+                        console.error('Looking for ID:', targetTab + '-tab');
+                        console.error('Available panel IDs:', Array.from(tabPanels).map(p => p.id));
+                    }
+                } catch (error) {
+                    console.error('Error in tab click handler:', error);
+                }
+            });
+        });
+        
+        console.log('Tabs initialized successfully (users)');
+    }
 })();

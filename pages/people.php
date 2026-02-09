@@ -191,6 +191,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
         $tmp = $_FILES['excel_file']['tmp_name'];
+        
+        // Check file exists and is readable
+        if (!file_exists($tmp) || !is_readable($tmp)) {
+            $_SESSION['message'] = 'הקובץ לא נמצא או לא ניתן לקרוא אותו.';
+            header('Location: people.php');
+            exit;
+        }
+        
+        // Log file info
+        error_log("Import {$title} - File size: " . filesize($tmp) . " bytes, Memory limit: " . ini_get('memory_limit'));
+        
         try {
             $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($tmp);
             if (method_exists($reader, 'setReadDataOnly')) { $reader->setReadDataOnly(true); }
@@ -293,7 +304,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             header('Location: people.php');
             exit;
         } catch (Exception $e) {
-            $_SESSION['message'] = nl2br(htmlspecialchars('שגיאה בקריאת הקובץ. ודא שקובץ Excel תקין.', ENT_QUOTES, 'UTF-8'));
+            error_log('Import Amarchal/Gizbar Error: ' . $e->getMessage());
+            $_SESSION['message'] = nl2br(htmlspecialchars('שגיאה בקריאת הקובץ: ' . $e->getMessage(), ENT_QUOTES, 'UTF-8'));
             header('Location: people.php');
             exit;
         }
@@ -312,6 +324,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             exit;
         }
         $tmp = $_FILES['excel_file']['tmp_name'];
+        
+        // Check file exists and is readable
+        if (!file_exists($tmp) || !is_readable($tmp)) {
+            $_SESSION['message'] = 'הקובץ לא נמצא או לא ניתן לקרוא אותו.';
+            header('Location: people.php');
+            exit;
+        }
+        
+        // Check PHP limits and log for debugging
+        $fileSize = filesize($tmp);
+        $memoryLimit = ini_get('memory_limit');
+        $uploadMaxSize = ini_get('upload_max_filesize');
+        $postMaxSize = ini_get('post_max_size');
+        error_log("Import People - File size: {$fileSize} bytes, Memory: {$memoryLimit}, Upload max: {$uploadMaxSize}, Post max: {$postMaxSize}");
+        
         try {
             $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($tmp);
             if (method_exists($reader, 'setReadDataOnly')) { $reader->setReadDataOnly(true); }
@@ -377,6 +404,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             ");
 
             $added = 0; $updated = 0; $skipped = 0; $errors = [];
+            $processedNames = []; // Track names processed in this file to prevent duplicates
+            
             for ($r = 1; $r < count($rows); $r++) {
                 $row = $rows[$r];
                 $excelRow = $r + 1; // 1-based with header at row 1
@@ -399,30 +428,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     continue;
                 }
                 $data['full_name'] = $fullName;
+                
+                // Check for duplicate names within the same file
+                $nameKey = mb_strtolower($fullName);
+                if (isset($processedNames[$nameKey])) {
+                    $skipped++;
+                    $errors[] = "שורה {$excelRow}: שם '{$fullName}' כבר קיים בקובץ בשורה {$processedNames[$nameKey]} - דילוג";
+                    continue;
+                }
+                $processedNames[$nameKey] = $excelRow;
 
                 $select->execute([$fullName]);
                 $existingId = $select->fetchColumn();
-                if ($existingId) {
-                    $update->execute([
-                        $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
-                        $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
-                        $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
-                        $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
-                        $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
-                        $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? '',
-                        $existingId
-                    ]);
-                    $updated++;
-                } else {
-                    $insert->execute([
-                        $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
-                        $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
-                        $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
-                        $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
-                        $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
-                        $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? ''
-                    ]);
-                    $added++;
+                
+                try {
+                    if ($existingId) {
+                        $update->execute([
+                            $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
+                            $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
+                            $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
+                            $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
+                            $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
+                            $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? '',
+                            $existingId
+                        ]);
+                        $updated++;
+                    } else {
+                        $insert->execute([
+                            $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
+                            $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
+                            $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
+                            $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
+                            $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
+                            $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? ''
+                        ]);
+                        $added++;
+                    }
+                } catch (PDOException $e) {
+                    $skipped++;
+                    if ($e->getCode() == 23000) {
+                        // Duplicate entry error
+                        if (strpos($e->getMessage(), 'PRIMARY') !== false) {
+                            $errors[] = "שורה {$excelRow}: שגיאת מפתח ראשי - ייתכן שיש בעיה ב-AUTO_INCREMENT של הטבלה. נא לפנות למנהל מערכת.";
+                        } else {
+                            $errors[] = "שורה {$excelRow}: שם '{$fullName}' כבר קיים במערכת.";
+                        }
+                    } else {
+                        error_log('Import People DB Error (row ' . $excelRow . '): ' . $e->getMessage());
+                        $errors[] = "שורה {$excelRow}: שגיאת מסד נתונים - {$e->getMessage()}";
+                    }
                 }
             }
             $summaryMsg = "ייבוא הושלם: עודכנו {$updated}, נוספו {$added}, דולגו {$skipped}.";
@@ -436,7 +490,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             header('Location: people.php');
             exit;
         } catch (Exception $e) {
-            $_SESSION['message'] = nl2br(htmlspecialchars('שגיאה בקריאת הקובץ. ודא שקובץ Excel תקין.', ENT_QUOTES, 'UTF-8'));
+            error_log('Import People Error: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            $_SESSION['message'] = nl2br(htmlspecialchars('שגיאה בקריאת הקובץ: ' . $e->getMessage() . '\n\nאם הקובץ גדול, נסה להקטין אותו או להגדיל את גבול הזיכרון.', ENT_QUOTES, 'UTF-8'));
             header('Location: people.php');
             exit;
         }
@@ -453,39 +509,7 @@ if (isset($_SESSION['message'])) {
 include '../templates/header.php';
 ?>
 
-<style>
-.editable { cursor: pointer; background-color: transparent; transition: background-color 0.2s; }
-.editable:hover { background-color: #fff3cd !important; }
-.editing { background-color: #d1ecf1 !important; }
-.select-col { width: 44px !important; min-width: 44px !important; max-width: 44px !important; padding: 0 !important; }
-.select-col input[type="checkbox"] { width: 14px; height: 14px; margin: 0 auto; display: block; }
-#peopleTable th.select-col, #peopleTable td.select-col { width: 44px !important; min-width: 44px !important; max-width: 44px !important; text-align: center; vertical-align: middle; }
-.duplicate-name, .duplicate-name td { background-color: #f8d7da !important; }
-.dataTables_wrapper .dt-buttons { float: left; }
-#peopleTable, #amarchalTable, #gizbarTable { table-layout: auto; }
-#peopleTable th.action-col,
-#peopleTable td.action-cell {
-    position: sticky;
-    left: 0;
-    inset-inline-start: 0;
-    z-index: 2;
-    background: transparent;
-}
-#peopleTable td.action-cell {
-    padding-left: 8px;
-    padding-right: 8px;
-}
-#peopleTable td.action-cell .row-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 6px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-}
-</style>
+<link rel="stylesheet" href="../assets/css/people.css">
 <?php if (!empty($message)): ?>
 <!-- Summary Message Modal -->
 <div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
@@ -503,15 +527,6 @@ include '../templates/header.php';
             </div>
         </div>
     </div>
-    <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var el = document.getElementById('messageModal');
-        if (el) {
-            var modal = new bootstrap.Modal(el);
-            modal.show();
-        }
-    });
-    </script>
     </div>
 <?php endif; ?>
 <?php
@@ -536,20 +551,15 @@ foreach ($gizbarMapRows as $row) {
 }
 ?>
 
-<ul class="nav nav-tabs mb-2" id="peopleTabs" role="tablist">
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab==='full')?'active':''; ?>" id="full-tab" href="people.php?tab=full" role="tab" aria-controls="full" aria-selected="<?php echo ($activeTab==='full')?'true':'false'; ?>">פרטים מלאים</a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab==='amarchal')?'active':''; ?>" id="amarchal-tab" href="people.php?tab=amarchal" role="tab" aria-controls="amarchal" aria-selected="<?php echo ($activeTab==='amarchal')?'true':'false'; ?>">רשימת אמרכלים</a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <a class="nav-link <?php echo ($activeTab==='gizbar')?'active':''; ?>" id="gizbar-tab" href="people.php?tab=gizbar" role="tab" aria-controls="gizbar" aria-selected="<?php echo ($activeTab==='gizbar')?'true':'false'; ?>">רשימת גזברים</a>
-    </li>
-    </ul>
+<!-- Tabs Navigation -->
+<div class="tabs-nav">
+    <button class="tab-btn<?php echo ($activeTab==='full')?' active':''; ?>" data-tab="full">פרטים מלאים</button>
+    <button class="tab-btn<?php echo ($activeTab==='amarchal')?' active':''; ?>" data-tab="amarchal">רשימת אמרכלים</button>
+    <button class="tab-btn<?php echo ($activeTab==='gizbar')?' active':''; ?>" data-tab="gizbar">רשימת גזברים</button>
+</div>
 
-<div class="tab-content" id="peopleTabsContent">
-    <div class="tab-pane fade <?php echo ($activeTab==='full')?'show active':''; ?>" id="full" role="tabpanel" aria-labelledby="full-tab">
+<div class="tab-panel<?php echo ($activeTab==='full')?' active' : ''; ?>" id="full-tab">
+    <div id="full">
         <h2>רשימת אנשים</h2>
         <div class="card fixed-card">
             <div class="card-body">
@@ -598,8 +608,6 @@ foreach ($gizbarMapRows as $row) {
                             <col>
                             <col>
                             <col>
-                            <col>
-                            <col>
                         </colgroup>
                         <thead class="table-dark">
                             <tr>
@@ -614,7 +622,7 @@ foreach ($gizbarMapRows as $row) {
                                 <th>גזבר</th>
                                 <th>מזהה תוכנה</th>
                                 <th>מס תורם</th>
-                                <th>חתן הר"ר</th>
+                                <th>חתן הר\'ר</th>
                                 <th>משפחה</th>
                                 <th>שם</th>
                                 <th>שם לדואר</th>
@@ -707,8 +715,10 @@ foreach ($gizbarMapRows as $row) {
             </div>
         </div>
     </div>
+</div>
 
-    <div class="tab-pane fade <?php echo ($activeTab==='amarchal')?'show active':''; ?>" id="amarchal" role="tabpanel" aria-labelledby="amarchal-tab">
+<div class="tab-panel<?php echo ($activeTab==='amarchal')?' active' : ''; ?>" id="amarchal-tab">
+    <div id="amarchal">
         <h2>רשימת אמרכלים</h2>
         <div class="card fixed-card">
             <div class="card-body">
@@ -759,8 +769,10 @@ foreach ($gizbarMapRows as $row) {
             </div>
         </div>
     </div>
+</div>
 
-    <div class="tab-pane fade <?php echo ($activeTab==='gizbar')?'show active':''; ?>" id="gizbar" role="tabpanel" aria-labelledby="gizbar-tab">
+<div class="tab-panel<?php echo ($activeTab==='gizbar')?' active' : ''; ?>" id="gizbar-tab">
+    <div id="gizbar">
         <h2>רשימת גזברים</h2>
         <div class="card fixed-card">
             <div class="card-body">
@@ -862,7 +874,7 @@ foreach ($gizbarMapRows as $row) {
                             <input type="text" class="form-control" id="donor_number" name="donor_number">
                         </div>
                         <div class="col-md-6 mb-3">
-                            <label for="chatan_harar" class="form-label">חתן הר"ר</label>
+                            <label for="chatan_harar" class="form-label">חתן הר\'ר</label>
                             <input type="text" class="form-control" id="chatan_harar" name="chatan_harar">
                         </div>
                     </div>
@@ -1046,629 +1058,12 @@ foreach ($gizbarMapRows as $row) {
     </div>
 </div>
 
-<script>
-(function() {
-    const gizbarToAmarchal = <?php echo json_encode($gizbarToAmarchal, JSON_UNESCAPED_UNICODE); ?>;
-    const gizbarList = <?php echo json_encode($gizbarim, JSON_UNESCAPED_UNICODE); ?>;
-    const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
-    const canEdit = <?php echo $canEdit ? 'true' : 'false'; ?>;
+<div id="peopleData"
+     data-gizbar-to-amarchal="<?php echo htmlspecialchars(json_encode($gizbarToAmarchal, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
+     data-gizbar-list="<?php echo htmlspecialchars(json_encode($gizbarim, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
+     data-can-edit="<?php echo $canEdit ? '1' : '0'; ?>"></div>
 
-    function setupPeoplePage($) {
-        if (window.__peopleInitDone) { return; }
-        window.__peopleInitDone = true;
-        const modal = new bootstrap.Modal(document.getElementById('personModal'));
-        let isEditMode = false;
-
-        // Ensure strict single instance and clean re-inits
-        if ($.fn.DataTable.isDataTable('#peopleTable')) {
-            $('#peopleTable').DataTable().clear().destroy();
-        }
-        const tableStateKey = 'peopleTableState';
-        const table = $('#peopleTable').DataTable({
-            destroy: true,
-            retrieve: true,
-            language: {
-                url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json',
-                search: 'חיפוש:',
-                lengthMenu: 'הצג _MENU_ רשומות',
-                info: 'מציג _START_ עד _END_ מתוך _TOTAL_ רשומות',
-                infoEmpty: 'אין רשומות להצגה',
-                infoFiltered: '(מסונן מתוך _MAX_ רשומות)',
-                paginate: { first: 'ראשון', last: 'אחרון', next: 'הבא', previous: 'הקודם' }
-            },
-            pageLength: 25,
-            autoWidth: true,
-            responsive: true,
-            order: [[6, 'asc']],
-            dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
-            buttons: [
-                { extend: 'colvis', text: 'הצג/הסתר עמודות' }
-            ],
-            stateSave: true,
-            stateSaveCallback: function(settings, data) {
-                localStorage.setItem(tableStateKey, JSON.stringify(data));
-            },
-            stateLoadCallback: function() {
-                const raw = localStorage.getItem(tableStateKey);
-                return raw ? JSON.parse(raw) : null;
-            },
-            columnDefs: [
-                { orderable: false, targets: 0, width: '28px' },
-                { orderable: false, targets: -1 }
-            ]
-        });
-
-        function applyColumnResize(selector, dtInstance) {
-            if (!$.fn.colResizable) { return; }
-            let resizeTimer = null;
-            const initResize = function() {
-                try { $(selector).colResizable({ disable: true }); } catch (e) {}
-                setTimeout(function() {
-                    $(selector).colResizable({ liveDrag: false, resizeMode: 'fit' });
-                    if (dtInstance && dtInstance.columns) { dtInstance.columns.adjust(); }
-                }, 30);
-            };
-            initResize();
-            if (dtInstance && dtInstance.on) {
-                dtInstance.off('column-visibility.dt._resize');
-                dtInstance.on('column-visibility.dt._resize', function() {
-                    if (dtInstance && dtInstance.columns) { dtInstance.columns.adjust(); }
-                    if (resizeTimer) { clearTimeout(resizeTimer); }
-                    resizeTimer = setTimeout(function() {
-                        initResize();
-                    }, 200);
-                });
-            }
-        }
-
-        applyColumnResize('#peopleTable', table);
-        if (table.buttons) {
-            const placeColVis = function() {
-                const $btns = $(table.buttons().container());
-                if ($btns.length) {
-                    $btns.insertAfter('#deleteSelectedBtn');
-                }
-            };
-            placeColVis();
-            table.off('draw._placeColVis');
-            table.on('draw._placeColVis', function() {
-                placeColVis();
-            });
-        }
-
-        // Defensive cleanup in case any duplicate info sections existed
-        (function dedupeInfo(){
-            const $wrapper = $('#peopleTable').closest('.dataTables_wrapper');
-            const $infos = $wrapper.find('.dataTables_info');
-            if ($infos.length > 1) { $infos.slice(1).remove(); }
-        })();
-
-
-        $('#addPersonBtn').on('click', function() {
-            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
-            isEditMode = false;
-            $('#personModalLabel').text('הוסף איש קשר חדש');
-            $('#personForm')[0].reset();
-            $('#person_id').val('');
-            modal.show();
-        });
-
-        function updateFullNameFromParts() {
-            const family = $('#family_name').val() || '';
-            const first = $('#first_name').val() || '';
-            const combined = (family + ' ' + first).replace(/\s+/g, ' ').trim();
-            $('#full_name').val(combined);
-        }
-
-        $('#family_name, #first_name').on('input', updateFullNameFromParts);
-
-        function updateAmarchalFromGizbar(force) {
-            const selected = $('#gizbar').val();
-            const currentAmarchal = $('#amarchal').val();
-            if (selected && gizbarToAmarchal[selected]) {
-                if (force || !currentAmarchal) {
-                    $('#amarchal').val(gizbarToAmarchal[selected]);
-                }
-            }
-        }
-
-        function ensureOption(selectId, value) {
-            if (!value) { return; }
-            const $select = $(selectId);
-            if ($select.find('option').filter(function(){ return $(this).val() === value; }).length === 0) {
-                $select.append($('<option>', { value: value, text: value }));
-            }
-        }
-
-        $('#gizbar').on('change', function() {
-            updateAmarchalFromGizbar(true);
-        });
-
-        const amarchalModal = new bootstrap.Modal(document.getElementById('addAmarchalModal'));
-        const gizbarModal = new bootstrap.Modal(document.getElementById('addGizbarModal'));
-
-        $('#addAmarchalBtn').on('click', function() {
-            $('#amarchalPersonSelect').val('');
-            amarchalModal.show();
-        });
-
-        $('#addGizbarBtn').on('click', function() {
-            $('#gizbarPersonSelect').val('');
-            gizbarModal.show();
-        });
-
-        function saveRepresentative(field, selectId, modalInstance) {
-            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
-            const $select = $(selectId);
-            const personId = $select.val();
-            const name = $select.find('option:selected').data('name');
-            if (!personId || !name) {
-                alert('נא לבחור שם מהרשימה');
-                return;
-            }
-            $.ajax({
-                url: 'people_api.php',
-                method: 'POST',
-                data: { action: 'update', id: personId, field: field, value: name, csrf_token: csrfToken },
-                success: function(response) {
-                    if (response.success) {
-                        modalInstance.hide();
-                        window.location.reload();
-                    } else {
-                        alert('שגיאה בשמירה: ' + (response.error || 'לא ידוע'));
-                    }
-                },
-                error: function(xhr) {
-                    const msg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'שגיאה בשמירה';
-                    alert(msg);
-                },
-                dataType: 'json'
-            });
-        }
-
-        $('#saveAmarchalBtn').on('click', function() {
-            saveRepresentative('amarchal', '#amarchalPersonSelect', amarchalModal);
-        });
-
-        $('#saveGizbarBtn').on('click', function() {
-            saveRepresentative('gizbar', '#gizbarPersonSelect', gizbarModal);
-        });
-
-        $('#peopleTable').on('click', '.edit-btn', function() {
-            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
-            isEditMode = true;
-            const id = $(this).data('id');
-            $('#personModalLabel').text('ערוך איש קשר');
-            $.ajax({
-                url: 'people_api.php?action=get_one&id=' + id,
-                method: 'GET',
-                success: function(response) {
-                    if (response.success) {
-                        const person = response.data;
-                        $('#person_id').val(person.id);
-                        ensureOption('#amarchal', person.amarchal || '');
-                        ensureOption('#gizbar', person.gizbar || '');
-                        $('#amarchal').val(person.amarchal || '');
-                        $('#gizbar').val(person.gizbar || '');
-                        $('#software_id').val(person.software_id || '');
-                        $('#donor_number').val(person.donor_number || '');
-                        $('#chatan_harar').val(person.chatan_harar || '');
-                        $('#family_name').val(person.family_name || '');
-                        $('#first_name').val(person.first_name || '');
-                        $('#name_for_mail').val(person.name_for_mail || '');
-                        updateFullNameFromParts();
-                        $('#husband_id').val(person.husband_id || '');
-                        $('#wife_id').val(person.wife_id || '');
-                        $('#address').val(person.address || '');
-                        $('#mail_to').val(person.mail_to || '');
-                        $('#neighborhood').val(person.neighborhood || '');
-                        $('#floor').val(person.floor || '');
-                        $('#city').val(person.city || '');
-                        $('#phone').val(person.phone || '');
-                        $('#husband_mobile').val(person.husband_mobile || '');
-                        $('#wife_name').val(person.wife_name || '');
-                        $('#wife_mobile').val(person.wife_mobile || '');
-                        $('#updated_email').val(person.updated_email || '');
-                        $('#husband_email').val(person.husband_email || '');
-                        $('#wife_email').val(person.wife_email || '');
-                        $('#receipts_to').val(person.receipts_to || '');
-                        $('#alphon').val(person.alphon || '');
-                        $('#send_messages').val(person.send_messages || '');
-                        updateAmarchalFromGizbar(false);
-                        modal.show();
-                    } else {
-                        alert('שגיאה בטעינת הנתונים');
-                    }
-                },
-                error: function() { alert('שגיאה בטעינת הנתונים'); },
-                dataType: 'json'
-            });
-        });
-
-        $('#savePersonBtn').on('click', function() {
-            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
-            const formData = $('#personForm').serializeArray();
-            const payload = {};
-            formData.forEach(function(item) {
-                payload[item.name] = item.value;
-            });
-
-            payload.action = isEditMode ? 'update_full' : 'add';
-            if (isEditMode) {
-                payload.id = $('#person_id').val();
-            }
-            payload.csrf_token = csrfToken;
-
-            $.ajax({
-                url: 'people_api.php',
-                method: 'POST',
-                data: payload,
-                success: function(response) {
-                    if (response.success) {
-                        modal.hide();
-                        window.location.reload();
-                    } else {
-                        alert('שגיאה בשמירה: ' + (response.error || 'לא ידוע'));
-                    }
-                },
-                error: function(xhr) {
-                    const msg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'שגיאה בשמירה';
-                    alert(msg);
-                },
-                dataType: 'json'
-            });
-        });
-
-        function updateDeleteSelectedState() {
-            const anyChecked = $('.row-select:checked').length > 0;
-            $('#deleteSelectedBtn').prop('disabled', !anyChecked);
-        }
-
-        $('#peopleTable').on('change', '.row-select', function() {
-            updateDeleteSelectedState();
-            const total = $('.row-select').length;
-            const checked = $('.row-select:checked').length;
-            $('#selectAllRows').prop('checked', total > 0 && total === checked);
-        });
-
-        $('#selectAllRows').on('change', function() {
-            const isChecked = $(this).is(':checked');
-            $('.row-select').prop('checked', isChecked);
-            updateDeleteSelectedState();
-        });
-
-        function getExportIds(dtInstance, rowSelector) {
-            if (!dtInstance || !dtInstance.rows) { return ''; }
-            const ids = [];
-            dtInstance.rows({ search: 'applied', order: 'applied' }).every(function () {
-                const $row = $(this.node());
-                const id = $row.data('id');
-                if (id) { ids.push(id); }
-            });
-            return ids.join(',');
-        }
-
-        $('#exportPeopleForm').on('submit', function() {
-            const ids = getExportIds(table);
-            $(this).find('input[name="export_ids"]').val(ids);
-        });
-
-        $('#exportAmarchalForm').on('submit', function() {
-            const ids = getExportIds(amarchalTable);
-            $(this).find('input[name="export_ids"]').val(ids);
-        });
-
-        $('#exportGizbarForm').on('submit', function() {
-            const ids = getExportIds(gizbarTable);
-            $(this).find('input[name="export_ids"]').val(ids);
-        });
-
-        $('#deleteSelectedBtn').on('click', function() {
-            if (!canEdit) { alert('אין הרשאה למחיקה'); return; }
-            const ids = [];
-            $('.row-select:checked').each(function() {
-                ids.push($(this).data('id'));
-            });
-
-            if (ids.length === 0) {
-                return;
-            }
-
-            if (!confirm('האם אתה בטוח שברצונך למחוק את הרשומות המסומנות?')) {
-                return;
-            }
-
-            $.ajax({
-                url: 'people_api.php',
-                method: 'POST',
-                data: { action: 'delete_bulk', ids: ids, csrf_token: csrfToken },
-                success: function(response) {
-                    if (response.success) {
-                        window.location.reload();
-                    } else {
-                        alert('שגיאה במחיקה: ' + (response.error || 'לא ידוע'));
-                    }
-                },
-                error: function(xhr) {
-                    const msg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'שגיאה במחיקה';
-                    alert(msg);
-                },
-                dataType: 'json'
-            });
-        });
-
-        // Init simple lists tables if present
-        let amarchalTable = null;
-        let gizbarTable = null;
-        if ($('#amarchalTable').length) {
-            if ($.fn.DataTable.isDataTable('#amarchalTable')) { $('#amarchalTable').DataTable().clear().destroy(); }
-            const amarchalStateKey = 'amarchalTableState';
-            amarchalTable = $('#amarchalTable').DataTable({
-                destroy: true,
-                retrieve: true,
-                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
-                pageLength: 25,
-                order: [[0, 'asc']],
-                dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
-                buttons: [
-                    { extend: 'colvis', text: 'הצג/הסתר עמודות' }
-                ],
-                stateSave: true,
-                stateSaveCallback: function(settings, data) {
-                    localStorage.setItem(amarchalStateKey, JSON.stringify(data));
-                },
-                stateLoadCallback: function() {
-                    const raw = localStorage.getItem(amarchalStateKey);
-                    return raw ? JSON.parse(raw) : null;
-                }
-            });
-            applyColumnResize('#amarchalTable', amarchalTable);
-            if (amarchalTable.buttons) {
-                amarchalTable.buttons().container().appendTo('#amarchalActionBar');
-            }
-        }
-        if ($('#gizbarTable').length) {
-            if ($.fn.DataTable.isDataTable('#gizbarTable')) { $('#gizbarTable').DataTable().clear().destroy(); }
-            const gizbarStateKey = 'gizbarTableState';
-            gizbarTable = $('#gizbarTable').DataTable({
-                destroy: true,
-                retrieve: true,
-                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
-                pageLength: 25,
-                order: [[0, 'asc']],
-                dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
-                buttons: [
-                    { extend: 'colvis', text: 'הצג/הסתר עמודות' }
-                ],
-                stateSave: true,
-                stateSaveCallback: function(settings, data) {
-                    localStorage.setItem(gizbarStateKey, JSON.stringify(data));
-                },
-                stateLoadCallback: function() {
-                    const raw = localStorage.getItem(gizbarStateKey);
-                    return raw ? JSON.parse(raw) : null;
-                }
-            });
-            applyColumnResize('#gizbarTable', gizbarTable);
-            if (gizbarTable.buttons) {
-                gizbarTable.buttons().container().appendTo('#gizbarActionBar');
-            }
-        }
-
-        let originalValue = '';
-        let currentCell = null;
-        let currentField = '';
-        $('#peopleTable').on('dblclick', 'td.editable', function() {
-            if (!canEdit) { return; }
-            if (currentCell) { saveEdit(); }
-            currentCell = $(this);
-            currentField = currentCell.data('field');
-            originalValue = currentCell.text();
-            if (currentField === 'gizbar') {
-                const select = $('<select class="form-select form-select-sm"></select>');
-                select.append($('<option>', { value: '', text: '' }));
-                (gizbarList || []).forEach(function(name) {
-                    select.append($('<option>', { value: name, text: name }));
-                });
-                select.val(originalValue);
-                currentCell.html(select).addClass('editing');
-                select.focus();
-                select.on('change', function(){ saveEdit(true); });
-                select.on('blur', function(){ saveEdit(true); });
-                select.on('keydown', function(e){ if (e.which === 27) { cancelEdit(); } });
-            } else {
-                const input = $('<input type="text" class="form-control form-control-sm">').val(originalValue).css({ 'width':'100%', 'box-sizing':'border-box' });
-                currentCell.html(input).addClass('editing');
-                input.focus().select();
-                input.on('blur', saveEdit);
-                input.on('keypress', function(e){ if (e.which === 13) { saveEdit(); } });
-                input.on('keydown', function(e){ if (e.which === 27) { cancelEdit(); } });
-            }
-        });
-
-        function saveEdit(isSelect) {
-            if (!currentCell) return;
-            const input = currentCell.find('input');
-            const select = currentCell.find('select');
-            const editor = select.length ? select : input;
-            if (!editor.length) return;
-            const newValue = editor.val();
-            const field = currentField || currentCell.data('field');
-            const id = currentCell.closest('tr').data('id');
-            if (newValue !== originalValue) {
-                $.ajax({
-                    url: 'people_api.php', method: 'POST', data: { action:'update', id, field, value:newValue, csrf_token: csrfToken },
-                    success: function(response) {
-                        if (response.success) {
-                            currentCell.text(newValue).removeClass('editing');
-                            currentCell.css('background-color', '#d4edda');
-                            setTimeout(() => { currentCell.css('background-color', ''); }, 1000);
-                            if (field === 'gizbar') {
-                                const amarchalVal = gizbarToAmarchal[newValue] || '';
-                                const $amarchalCell = currentCell.closest('tr').find("td[data-field='amarchal']");
-                                if ($amarchalCell.length) {
-                                    $amarchalCell.text(amarchalVal);
-                                }
-                                if (amarchalVal !== '') {
-                                    $.ajax({
-                                        url: 'people_api.php',
-                                        method: 'POST',
-                                        data: { action:'update', id, field:'amarchal', value: amarchalVal, csrf_token: csrfToken },
-                                        dataType: 'json'
-                                    });
-                                }
-                            }
-                        } else { alert('שגיאה בעדכון: ' + response.error); currentCell.text(originalValue).removeClass('editing'); }
-                    },
-                    error: function(){ alert('שגיאה בעדכון'); currentCell.text(originalValue).removeClass('editing'); },
-                    dataType:'json'
-                });
-            } else {
-                currentCell.text(originalValue).removeClass('editing');
-            }
-            currentCell = null;
-            currentField = '';
-        }
-        function cancelEdit(){ if (currentCell) { currentCell.text(originalValue).removeClass('editing'); currentCell = null; currentField = ''; } }
-
-        // PDF Print Modal handlers
-        $('input[name="reportType"]').on('change', function() {
-            if ($(this).val() === 'amarchal') {
-                $('#amarchalSelection').show();
-                $('#gizbarSelection').hide();
-                $('#gizbarSortOptions').hide();
-            } else {
-                $('#amarchalSelection').hide();
-                $('#gizbarSelection').show();
-                $('#gizbarSortOptions').show();
-            }
-        });
-
-        $('#selectAllAmarchal').on('click', function() {
-            $('.amarchal-checkbox').prop('checked', true);
-        });
-
-        $('#deselectAllAmarchal').on('click', function() {
-            $('.amarchal-checkbox').prop('checked', false);
-        });
-
-        $('#selectAllGizbar').on('click', function() {
-            $('.gizbar-checkbox').prop('checked', true);
-        });
-
-        $('#deselectAllGizbar').on('click', function() {
-            $('.gizbar-checkbox').prop('checked', false);
-        });
-
-        $('#generatePdfBtn').on('click', function() {
-            const reportType = $('input[name="reportType"]:checked').val();
-            const outputType = $('input[name="outputType"]:checked').val();
-            const sortBy = $('input[name="gizbarSort"]:checked').val() || 'gizbar';
-            let selected = [];
-            let selectedMonths = [];
-
-            if (reportType === 'amarchal') {
-                $('.amarchal-checkbox:checked').each(function() {
-                    selected.push($(this).val());
-                });
-            } else {
-                $('.gizbar-checkbox:checked').each(function() {
-                    selected.push($(this).val());
-                });
-            }
-
-            if (selected.length === 0) {
-                alert('נא לבחור לפחות פריט אחד להדפסה');
-                return;
-            }
-
-            $('.month-checkbox:checked').each(function() {
-                selectedMonths.push($(this).val());
-            });
-
-            // Create form and submit to PDF generator
-            const form = $('<form>', {
-                'method': 'POST',
-                'action': 'print_people_pdf.php',
-                'target': '_blank'
-            });
-
-            form.append($('<input>', {
-                'type': 'hidden',
-                'name': 'reportType',
-                'value': reportType
-            }));
-
-            form.append($('<input>', {
-                'type': 'hidden',
-                'name': 'outputType',
-                'value': outputType
-            }));
-
-            form.append($('<input>', {
-                'type': 'hidden',
-                'name': 'sortBy',
-                'value': sortBy
-            }));
-
-            form.append($('<input>', {
-                'type': 'hidden',
-                'name': 'selected',
-                'value': JSON.stringify(selected)
-            }));
-
-            form.append($('<input>', {
-                'type': 'hidden',
-                'name': 'months',
-                'value': JSON.stringify(selectedMonths)
-            }));
-
-            form.append($('<input>', {
-                'type': 'hidden',
-                'name': 'csrf_token',
-                'value': csrfToken
-            }));
-
-            $('body').append(form);
-            form.submit();
-            form.remove();
-
-            // Close modal
-            const modalElement = document.getElementById('printPdfModal');
-            const modalInstance = bootstrap.Modal.getInstance(modalElement);
-            if (modalInstance) {
-                modalInstance.hide();
-            }
-        });
-
-        $('#peopleTable').on('click', '.delete-btn', function() {
-            if (!canEdit) { alert('אין הרשאה למחיקה'); return; }
-            const id = $(this).data('id');
-            const row = $(this).closest('tr');
-            if (confirm('האם אתה בטוח שברצונך למחוק רשומה זו?')) {
-                $.ajax({
-                    url:'people_api.php', method:'POST', data:{ action:'delete', id, csrf_token: csrfToken },
-                    success: function(response){ if (response.success) { table.row(row).remove().draw(); } else { alert('שגיאה במחיקה: ' + response.error); } },
-                    error: function(){ alert('שגיאה במחיקה'); }, dataType:'json'
-                });
-            }
-        });
-    }
-
-    function tryInit(attempts) {
-        if (window.jQuery && jQuery.fn && jQuery.fn.DataTable && jQuery.fn.dataTable && jQuery.fn.dataTable.Buttons) {
-            setupPeoplePage(jQuery);
-            return;
-        }
-        if ((attempts||0) < 50) {
-            setTimeout(function(){ tryInit((attempts||0)+1); }, 100);
-        } else {
-            console.warn('People page init: jQuery/DataTables not available');
-        }
-    }
-    tryInit(0);
-})();
-</script>
+<script src="../assets/js/people.js"></script>
 
 <!-- Import Excel Modal -->
 <div class="modal fade" id="importPeopleModal" tabindex="-1" aria-labelledby="importPeopleModalLabel" aria-hidden="true">

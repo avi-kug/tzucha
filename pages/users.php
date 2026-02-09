@@ -102,9 +102,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$users = $pdo->query('SELECT id, username, email, role, is_active, is_admin, created_at FROM users ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
-$permRows = $pdo->query('SELECT user_id, permission_key FROM user_permissions')->fetchAll(PDO::FETCH_ASSOC);
-$attempts = $pdo->query('SELECT username, ip_address, attempted_at, success, geo_city, geo_country FROM login_attempts ORDER BY attempted_at DESC LIMIT 50')->fetchAll(PDO::FETCH_ASSOC);
+$users = [];
+$permRows = [];
+$attempts = [];
+
+try {
+    $users = $pdo->query('SELECT id, username, email, role, is_active, is_admin, created_at FROM users ORDER BY id DESC')->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log('Error fetching users: ' . $e->getMessage());
+    $users = [];
+}
+
+try {
+    $permRows = $pdo->query('SELECT user_id, permission_key FROM user_permissions')->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log('Error fetching permissions: ' . $e->getMessage());
+    $permRows = [];
+}
+
+// Safely query login attempts with error handling
+try {
+    $result = $pdo->query('SELECT username, ip_address, attempted_at, success, geo_city, geo_country FROM login_attempts ORDER BY attempted_at DESC LIMIT 50');
+    if ($result) {
+        $attempts = $result->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (PDOException $e) {
+    error_log('Error fetching login attempts: ' . $e->getMessage());
+    $attempts = [];
+}
+
 $permMap = [];
 foreach ($permRows as $row) {
     $permMap[$row['user_id']][] = $row['permission_key'];
@@ -112,23 +138,20 @@ foreach ($permRows as $row) {
 
 include '../templates/header.php';
 ?>
+<link rel="stylesheet" href="../assets/css/people.css">
 
 <h2>ניהול משתמשים</h2>
 <?php if ($message): ?>
     <div class="alert alert-info"><?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?></div>
 <?php endif; ?>
 
-<ul class="nav nav-tabs mb-3" role="tablist">
-    <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#usersTab" type="button" role="tab" aria-controls="usersTab" aria-selected="true">משתמשים</button>
-    </li>
-    <li class="nav-item" role="presentation">
-        <button class="nav-link" id="attempts-tab" data-bs-toggle="tab" data-bs-target="#attemptsTab" type="button" role="tab" aria-controls="attemptsTab" aria-selected="false">ניסיונות כניסה</button>
-    </li>
-</ul>
+<div class="tabs-nav">
+    <button class="tab-btn active" data-tab="users">משתמשים</button>
+    <button class="tab-btn" data-tab="attempts">ניסיונות כניסה</button>
+</div>
 
-<div class="tab-content">
-    <div class="tab-pane fade show active" id="usersTab" role="tabpanel" aria-labelledby="users-tab">
+<div class="tab-panel active" id="users-tab">
+    <div id="users">
 
 <div class="card">
     <div class="card-body">
@@ -175,7 +198,7 @@ include '../templates/header.php';
                                     <?php echo csrf_input(); ?>
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="id" value="<?php echo (int)$u['id']; ?>">
-                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('למחוק משתמש?')">מחק</button>
+                                    <button type="submit" class="btn btn-sm btn-danger delete-user-btn" data-confirm="למחוק משתמש?">מחק</button>
                                 </form>
                             </td>
                         </tr>
@@ -187,7 +210,10 @@ include '../templates/header.php';
 </div>
 
     </div>
-    <div class="tab-pane fade" id="attemptsTab" role="tabpanel" aria-labelledby="attempts-tab">
+</div>
+
+<div class="tab-panel" id="attempts-tab">
+    <div id="attempts">
         <div class="card">
             <div class="card-body">
                 <h5 class="mb-3">ניסיונות כניסה אחרונים</h5>
@@ -281,61 +307,7 @@ include '../templates/header.php';
     </div>
 </div>
 
-<script>
-(function(){
-    function initUsersModal(){
-        if (!window.bootstrap || !document.getElementById('userModal')) { return false; }
-        const modalEl = document.getElementById('userModal');
-        const modal = new bootstrap.Modal(modalEl);
-
-        const addBtn = document.getElementById('addUserBtn');
-        if (addBtn) {
-            addBtn.addEventListener('click', function(){
-                document.getElementById('userModalTitle').textContent = 'הוסף משתמש';
-                document.getElementById('userFormAction').value = 'create';
-                document.getElementById('userId').value = '';
-                document.getElementById('userUsername').value = '';
-                document.getElementById('userEmail').value = '';
-                document.getElementById('userPassword').value = '';
-                document.getElementById('userActive').checked = true;
-                document.getElementById('userRole').value = 'viewer';
-                document.querySelectorAll('.perm-check').forEach(cb => cb.checked = false);
-                modal.show();
-            });
-        }
-
-        document.querySelectorAll('.edit-user-btn').forEach(function(btn){
-            btn.addEventListener('click', function(){
-                document.getElementById('userModalTitle').textContent = 'ערוך משתמש';
-                document.getElementById('userFormAction').value = 'update';
-                document.getElementById('userId').value = btn.dataset.id;
-                document.getElementById('userUsername').value = btn.dataset.username;
-                document.getElementById('userEmail').value = btn.dataset.email;
-                document.getElementById('userPassword').value = '';
-                document.getElementById('userActive').checked = btn.dataset.active === '1';
-                document.getElementById('userRole').value = btn.dataset.role || 'viewer';
-                document.querySelectorAll('.perm-check').forEach(cb => cb.checked = false);
-                try {
-                    const perms = JSON.parse(btn.dataset.perms || '[]');
-                    perms.forEach(p => {
-                        const el = document.querySelector('input[name="permissions[]"][value="' + p + '"]');
-                        if (el) { el.checked = true; }
-                    });
-                } catch (e) {}
-                modal.show();
-            });
-        });
-        return true;
-    }
-
-    function tryInit(attempts){
-        if (initUsersModal()) { return; }
-        if ((attempts || 0) < 50) {
-            setTimeout(function(){ tryInit((attempts || 0) + 1); }, 100);
-        }
-    }
-    tryInit(0);
-})();
-</script>
+<?php $jsV = @filemtime(__DIR__ . '/../assets/js/users.js') ?: '20260209'; ?>
+<script src="../assets/js/users.js?v=<?php echo $jsV; ?>"></script>
 
 <?php include '../templates/footer.php'; ?>

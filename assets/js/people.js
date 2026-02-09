@@ -591,6 +591,64 @@
                 selectedMonths.push($(this).val());
             });
 
+            // Auto-split large label jobs
+            if (outputType === 'labels') {
+                const monthsCount = selectedMonths.length || 1;
+                const itemsCount = selected.length;
+                const estimatedLabels = itemsCount * monthsCount;
+                const splitThreshold = 60;
+                
+                // Check if we should auto-split
+                if ((itemsCount > splitThreshold && monthsCount > 1) || itemsCount > 100) {
+                    const message = `בגלל כמות המדבקות הגדולה (${estimatedLabels} מדבקות),\n` +
+                                  `המערכת תפצל את זה ל-2 קבצי PDF נפרדים.\n\n` +
+                                  `כל קובץ יורד בנפרד. האם להמשיך?`;
+                    if (!confirm(message)) {
+                        return;
+                    }
+                    
+                    // Split items into 2 halves
+                    const half = Math.ceil(itemsCount / 2);
+                    const firstHalf = selected.slice(0, half);
+                    const secondHalf = selected.slice(half);
+                    
+                    // Submit first PDF
+                    submitPdfForm(reportType, outputType, sortBy, firstHalf, selectedMonths, 'חלק 1 מתוך 2');
+                    
+                    // Submit second PDF after short delay
+                    setTimeout(() => {
+                        submitPdfForm(reportType, outputType, sortBy, secondHalf, selectedMonths, 'חלק 2 מתוך 2');
+                    }, 1500);
+                    
+                    const modalElement = document.getElementById('printPdfModal');
+                    if (modalElement) {
+                        bootstrap.Modal.getInstance(modalElement)?.hide();
+                    }
+                    return;
+                }
+                
+                // Warning for medium-large jobs
+                if (estimatedLabels > 50) {
+                    const minutes = Math.ceil(estimatedLabels / 10);
+                    const message = `אתה עומד ליצור כ-${estimatedLabels} מדבקות.\n\n` +
+                                  `זה עשוי לקחת ${minutes} דקות או יותר.\n\n` +
+                                  `האם להמשיך?\n\n` +
+                                  `טיפ: אם זה נכשל, פצל לחודשים נפרדים או בחר פחות גזברים בכל פעם (30-40 מקסימום).`;
+                    if (!confirm(message)) {
+                        return;
+                    }
+                }
+            }
+
+            submitPdfForm(reportType, outputType, sortBy, selected, selectedMonths, '');
+
+            const modalElement = document.getElementById('printPdfModal');
+            if (modalElement) {
+                bootstrap.Modal.getInstance(modalElement)?.hide();
+            }
+        });
+        
+        function submitPdfForm(reportType, outputType, sortBy, selectedItems, selectedMonths, partLabel) {
             const form = $('<form>', {
                 'method': 'POST',
                 'action': 'print_people_pdf.php',
@@ -618,13 +676,19 @@
             form.append($('<input>', {
                 'type': 'hidden',
                 'name': 'selected',
-                'value': JSON.stringify(selected)
+                'value': JSON.stringify(selectedItems)
             }));
 
             form.append($('<input>', {
                 'type': 'hidden',
                 'name': 'months',
                 'value': JSON.stringify(selectedMonths)
+            }));
+            
+            form.append($('<input>', {
+                'type': 'hidden',
+                'name': 'partLabel',
+                'value': partLabel
             }));
 
             form.append($('<input>', {
@@ -636,13 +700,7 @@
             $('body').append(form);
             form.submit();
             form.remove();
-
-            const modalElement = document.getElementById('printPdfModal');
-            const modalInstance = bootstrap.Modal.getInstance(modalElement);
-            if (modalInstance) {
-                modalInstance.hide();
-            }
-        });
+        }
 
         $('#peopleTable').on('click', '.delete-btn', function() {
             if (!canEdit) { alert('אין הרשאה למחיקה'); return; }
@@ -671,52 +729,3 @@
     }
     tryInit(0);
 }());
-
-document.addEventListener('DOMContentLoaded', function() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tabFromUrl = urlParams.get('tab');
-    if (tabFromUrl && document.querySelector(`[data-tab="${tabFromUrl}"]`)) {
-        switchTab(tabFromUrl);
-    } else {
-        switchTab(document.querySelector('.tab-btn.active')?.dataset.tab || 'full');
-    }
-    initializeTabs();
-});
-
-function initializeTabs() {
-    const tabButtons = document.querySelectorAll('.tab-btn');
-    tabButtons.forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const tabName = this.dataset.tab;
-            switchTab(tabName);
-            // Update URL (query string)
-            const url = new URL(window.location);
-            url.searchParams.set('tab', tabName);
-            window.history.replaceState({}, '', url);
-        });
-    });
-}
-
-window.switchTab = function(tabName) {
-    console.log('switchTab called with', tabName);
-    // Update buttons
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    const targetBtn = document.querySelector(`[data-tab="${tabName}"]`);
-    if (targetBtn) {
-        targetBtn.classList.add('active');
-    }
-    // Update content
-    document.querySelectorAll('.tab-panel').forEach(panel => {
-        panel.classList.remove('active');
-    });
-    const targetContent = document.getElementById(`${tabName}-tab`);
-    if (targetContent) {
-        targetContent.classList.add('active');
-    }
-    else {
-        console.warn('No tab-panel found for', tabName);
-    }
-}

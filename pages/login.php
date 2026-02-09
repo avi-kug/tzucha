@@ -133,13 +133,13 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $body = "קוד הכניסה שלך: {$code}\nהקוד תקף ל-10 דקות.";
         if (!send_mail($user['email'], $subject, $body)) {
             $errors[] = 'שליחת הקוד נכשלה. בדוק הגדרות מייל.';
+            $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 0, ?, ?)')
+                ->execute([$user['username'], $ip, $geo['city'], $geo['country']]);
         } else {
             $_SESSION['pending_user_id'] = $user['id'];
             $_SESSION['pending_username'] = $user['username'];
             $_SESSION['login_step'] = 'otp';
             $step = 'otp';
-            $pdo->prepare('DELETE FROM login_attempts WHERE username = ? AND ip_address = ?')
-                ->execute([$username, $ip]);
         }
         }
     }
@@ -156,6 +156,12 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $otpRow = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$otpRow || strtotime($otpRow['expires_at']) < time() || !password_verify($code, $otpRow['otp_hash'])) {
             $errors[] = 'קוד שגוי או שפג תוקף.';
+            $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+            $ip = trim(explode(',', $ip)[0]);
+            $geo = resolve_geo_from_ip($ip);
+            $pendingUsername = $_SESSION['pending_username'] ?? '';
+            $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 0, ?, ?)')
+                ->execute([$pendingUsername, $ip, $geo['city'], $geo['country']]);
         } else {
             $userStmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
             $userStmt->execute([$userId]);
