@@ -14,5 +14,10 @@
     <script src="https://cdn.jsdelivr.net/npm/colresizable/colResizable-1.6.min.js"></script>
     <?php $jsV = @filemtime(__DIR__ . '/../assets/js/script.js') ?: '20260127'; ?>
     <script src="../assets/js/script.js?v=<?php echo $jsV; ?>"></script>
+    <?php if (!empty($pageScripts)): ?>
+        <?php foreach ($pageScripts as $ps): ?>
+            <script src="<?php echo $ps; ?>"></script>
+        <?php endforeach; ?>
+    <?php endif; ?>
 </body>
 </html>
