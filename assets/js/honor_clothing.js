@@ -35,7 +35,18 @@ function loadKavodData(refresh) {
                     url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json'
                 },
                 dom: 'Bfrtip',
-                buttons: ['copy', 'excel', 'csv', 'colvis']
+                buttons: [
+                    {
+                        extend: 'excel',
+                        text: '<i class="bi bi-file-earmark-excel"></i> ייצוא לאקסל',
+                        className: 'btn btn-success btn-sm'
+                    },
+                    {
+                        extend: 'colvis',
+                        text: '<i class="bi bi-eye"></i> עמודות',
+                        className: 'btn btn-secondary btn-sm'
+                    }
+                ]
             });
         },
         error: function(xhr) {

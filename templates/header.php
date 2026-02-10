@@ -40,11 +40,6 @@ auth_guard_page($pdo, $navItems);
                     <?php endif; ?>
                 <?php endforeach; ?>
             </ul>
-            <?php if (auth_is_logged_in()): ?>
-                <div style="position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); text-align:center;">
-                    <a class="nav-link text-danger fw-bold" style="font-size:1.05rem; display:inline-block;" href="/tzucha/pages/logout.php">התנתקות</a>
-                </div>
-            <?php endif; ?>
         </div>
         <div class="main-wrapper">
             <div class="content-area">

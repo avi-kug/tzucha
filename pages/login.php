@@ -92,7 +92,7 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $ip = trim(explode(',', $ip)[0]);
     $limitWindowMinutes = 10;
-    $limitMax = 5;
+    $limitMax = 8;
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM login_attempts WHERE ip_address = ? AND attempted_at >= (NOW() - INTERVAL ? MINUTE)');
     $stmt->execute([$ip, $limitWindowMinutes]);
     $attempts = (int)$stmt->fetchColumn();
