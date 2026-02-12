@@ -377,7 +377,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'גזבר' => 'gizbar',
                 'מזהה תוכנה' => 'software_id',
                 'מס תורם' => 'donor_number',
-                'חתן הר\'ר' => 'chatan_harar',
+                'חתן הר"ר' => 'chatan_harar',
                 'משפחה' => 'family_name',
                 'שם' => 'first_name',
                 'שם לדואר' => 'name_for_mail',
@@ -661,11 +661,12 @@ foreach ($gizbarMapRows as $row) {
                                         &nbsp;
                                     <?php endif; ?>
                                 </th>
+                                <th>#</th>
                                 <th>אמרכל</th>
                                 <th>גזבר</th>
                                 <th>מזהה תוכנה</th>
                                 <th>מס תורם</th>
-                                <th>חתן הר\'ר</th>
+                                <th>חתן הר''ר</th>
                                 <th>משפחה</th>
                                 <th>שם</th>
                                 <th>שם לדואר</th>
@@ -712,6 +713,7 @@ foreach ($gizbarMapRows as $row) {
                                     } else {
                                         echo "<td class='text-center select-col'></td>";
                                     }
+                                    echo "<td class='text-center'><button class='btn btn-sm btn-info person-details-btn' data-software-id='" . htmlspecialchars($row['software_id'] ?? '') . "' data-person-id='$id' data-name='" . htmlspecialchars(($row['first_name'] ?? '') . ' ' . ($row['family_name'] ?? '')) . "' title='פרטים מלאים'><i class='bi bi-person-circle'></i></button></td>";
                                     echo "<td class='{$cellClass}' data-field='amarchal'>" . htmlspecialchars($row['amarchal'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='gizbar'>" . htmlspecialchars($row['gizbar'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='software_id'>" . htmlspecialchars($row['software_id'] ?? '') . "</td>";
@@ -1106,8 +1108,6 @@ foreach ($gizbarMapRows as $row) {
      data-gizbar-list="<?php echo htmlspecialchars(json_encode($gizbarim, JSON_UNESCAPED_UNICODE), ENT_QUOTES, 'UTF-8'); ?>"
      data-can-edit="<?php echo $canEdit ? '1' : '0'; ?>"></div>
 
-<script src="../assets/js/people.js"></script>
-
 <!-- Import Excel Modal -->
 <div class="modal fade" id="importPeopleModal" tabindex="-1" aria-labelledby="importPeopleModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -1288,4 +1288,6 @@ foreach ($gizbarMapRows as $row) {
     </div>
 </div>
 
+<?php include '../templates/person_details_modal.php'; ?>
 <?php include '../templates/footer.php'; ?>
+<script src="../assets/js/people.js"></script>

@@ -714,6 +714,110 @@
                 });
             }
         });
+
+        // Person details modal handler
+        $('#peopleTable').on('click', '.person-details-btn', function() {
+            var softwareId = $(this).data('software-id');
+            var personId = $(this).data('person-id');
+            var personName = $(this).data('name');
+            showPersonDetailsModal(softwareId, personId, personName);
+        });
+        
+        // Edit button from person details modal - toggle edit mode
+        $(document).on('click', '#editPersonFromDetailsBtn', function() {
+            if (!canEdit) { 
+                alert('אין הרשאה לעריכה'); 
+                return; 
+            }
+            
+            // Toggle to edit mode
+            togglePersonDetailsEditMode(true);
+        });
+        
+        // Cancel edit from person details modal
+        $(document).on('click', '#cancelEditFromDetailsBtn', function() {
+            var personId = $('#editPersonFromDetailsBtn').data('person-id');
+            var softwareId = $('#editPersonFromDetailsBtn').data('software-id');
+            var personName = $('#personName').text().replace('פרטים מלאים - ', '');
+            
+            // Reload data to cancel changes
+            showPersonDetailsModal(softwareId, personId, personName);
+        });
+        
+        // Save button from person details modal
+        $(document).on('click', '#savePersonFromDetailsBtn', function() {
+            if (!canEdit) { 
+                alert('אין הרשאה לעריכה'); 
+                return; 
+            }
+            
+            var personId = $('#editPersonFromDetailsBtn').data('person-id');
+            
+            // Collect all input values
+            var formData = {
+                action: 'update_full',
+                id: personId,
+                csrf_token: csrfToken
+            };
+            
+            // Get all edit inputs
+            $('#basicInfoContent input, #basicInfoContent select, #basicInfoContent textarea').each(function() {
+                var fieldName = $(this).data('field');
+                if (fieldName) {
+                    formData[fieldName] = $(this).val();
+                }
+            });
+            
+            // Save to server
+            $.ajax({
+                url: 'people_api.php',
+                method: 'POST',
+                data: formData,
+                dataType: 'json',
+                success: function(response) {
+                    if (response.success) {
+                        alert('הפרטים עודכנו בהצלחה');
+                        
+                        // Close the modal
+                        var detailsModal = bootstrap.Modal.getInstance(document.getElementById('personDetailsModal'));
+                        if (detailsModal) {
+                            detailsModal.hide();
+                        }
+                        
+                        // Reload the table if we're on the people page
+                        if (typeof table !== 'undefined' && table) {
+                            $.ajax({
+                                url: 'people_api.php?action=get_one&id=' + personId,
+                                method: 'GET',
+                                dataType: 'json',
+                                success: function(resp) {
+                                    if (resp.success && resp.data) {
+                                        // Update the table row
+                                        var rowNode = table.rows(function(idx, data, node) {
+                                            return $(node).data('id') == personId;
+                                        }).nodes()[0];
+                                        
+                                        if (rowNode) {
+                                            $(rowNode).find('.editable').each(function() {
+                                                var field = $(this).data('field');
+                                                if (field && resp.data[field]) {
+                                                    $(this).text(resp.data[field]);
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    } else {
+                        alert('שגיאה בשמירה: ' + (response.error || 'לא ידוע'));
+                    }
+                },
+                error: function() {
+                    alert('שגיאה בשמירה');
+                }
+            });
+        });
     }
 
     function tryInit(attempts) {
@@ -729,3 +833,294 @@
     }
     tryInit(0);
 }());
+
+// Show person details in modal
+function showPersonDetailsModal(softwareId, personId, personName) {
+    $('#personName').text(personName || 'פרטים');
+    
+    // Store personId and softwareId for edit button
+    $('#editPersonFromDetailsBtn').data('person-id', personId);
+    $('#editPersonFromDetailsBtn').data('software-id', softwareId);
+    
+    // Show/hide edit button based on permissions
+    const dataEl = document.getElementById('peopleData');
+    const canEdit = dataEl ? dataEl.dataset.canEdit === '1' : false;
+    if (canEdit) {
+        $('#editPersonFromDetailsBtn').show();
+    } else {
+        $('#editPersonFromDetailsBtn').hide();
+    }
+    
+    // Reset to view mode
+    togglePersonDetailsEditMode(false);
+    
+    var detailsModal = new bootstrap.Modal(document.getElementById('personDetailsModal'));
+    detailsModal.show();
+    
+    // Hebrew field name mapping
+    var hebrewFields = {
+        'amarchal': 'אמרכל',
+        'gizbar': 'גזבר',
+        'software_id': 'מזהה תוכנה',
+        'donor_number': 'מס תורם',
+        'chatan_harar': "חתן הר'ר",
+        'family_name': 'משפחה',
+        'first_name': 'שם',
+        'name_for_mail': 'שם לדואר',
+        'full_name': 'שם ומשפחה ביחד',
+        'husband_id': 'תעודת זהות בעל',
+        'wife_id': 'תעודת זהות אשה',
+        'address': 'כתובת',
+        'mail_to': 'דואר ל',
+        'neighborhood': 'שכונה / אזור',
+        'floor': 'קומה',
+        'city': 'עיר',
+        'phone': 'טלפון',
+        'husband_mobile': 'נייד בעל',
+        'wife_name': 'שם האשה',
+        'wife_mobile': 'נייד אשה',
+        'updated_email': 'כתובת מייל מעודכן',
+        'husband_email': 'מייל בעל',
+        'wife_email': 'מייל אשה',
+        'receipts_to': 'קבלות ל',
+        'alphon': 'אלפון',
+        'send_messages': 'שליחת הודעות',
+        'last_change': 'שינוי אחרון'
+    };
+    
+    // Load person details from API
+    $.ajax({
+        url: 'person_details_api.php',
+        method: 'GET',
+        data: { 
+            software_id: softwareId,
+            person_id: personId
+        },
+        dataType: 'json',
+        success: function(data) {
+            // Populate basic info - organized display order
+            var basicHtml = '';
+            if (data.person) {
+                var p = data.person;
+                
+                // פרטים אישיים
+                basicHtml += '<div class="col-12"><h6 class="text-primary mb-3"><i class="bi bi-person-badge me-2"></i>פרטים אישיים</h6></div>';
+                
+                var personalFields = [
+                    {key: 'family_name', label: 'משפחה'},
+                    {key: 'first_name', label: 'שם'},
+                    {key: 'name_for_mail', label: 'שם לדואר'},
+                    {key: 'wife_name', label: 'שם האשה'},
+                    {key: 'husband_mobile', label: 'נייד בעל'},
+                    {key: 'wife_mobile', label: 'נייד אשה'},
+                    {key: 'phone', label: 'טלפון'},
+                    {key: 'husband_id', label: 'תעודת זהות בעל'},
+                    {key: 'wife_id', label: 'תעודת זהות אשה'},
+                    {key: 'address', label: 'כתובת'},
+                    {key: 'mail_to', label: 'דואר ל'},
+                    {key: 'neighborhood', label: 'שכונה / אזור'},
+                    {key: 'floor', label: 'קומה'},
+                    {key: 'city', label: 'עיר'},
+                    {key: 'updated_email', label: 'כתובת מייל מעודכן'},
+                    {key: 'husband_email', label: 'מייל בעל'},
+                    {key: 'wife_email', label: 'מייל אשה'}
+                ];
+                
+                // Display personal fields
+                personalFields.forEach(function(field) {
+                    if (p[field.key]) {
+                        basicHtml += '<div class="col-md-6 mb-2"><strong>' + field.label + ':</strong> ' + p[field.key] + '</div>';
+                    }
+                });
+                
+                // Add separator
+                basicHtml += '<div class="col-12"><hr class="my-3"></div>';
+                
+                // פרטים נוספים
+                basicHtml += '<div class="col-12"><h6 class="text-primary mb-3"><i class="bi bi-info-circle me-2"></i>פרטים נוספים</h6></div>';
+                
+                // Display remaining fields (exclude already shown fields and system fields)
+                var displayedKeys = personalFields.map(function(f) { return f.key; });
+                displayedKeys.push('id', 'created_at'); // Don't show these
+                
+                for (var key in p) {
+                    if (p[key] && displayedKeys.indexOf(key) === -1) {
+                        var label = hebrewFields[key] || key;
+                        basicHtml += '<div class="col-md-6 mb-2"><strong>' + label + ':</strong> ' + p[key] + '</div>';
+                    }
+                }
+            } else {
+                basicHtml = '<div class="col-12 text-muted">לא נמצאו פרטים בסיסיים</div>';
+            }
+            $('#basicInfoContent').html(basicHtml);
+            
+            // Store person data for edit mode
+            $('#basicInfoContent').data('person-data', p);
+            
+            // Populate cash donations - single table with all details
+            var cashHtml = '';
+            if (data.cash_donations_all && data.cash_donations_all.length > 0) {
+                cashHtml = '<table class="table table-sm table-striped">';
+                cashHtml += '<thead><tr><th>תאריך</th><th>פרויקט</th><th>סכום</th><th>הערות</th></tr></thead><tbody>';
+                data.cash_donations_all.forEach(function(item) {
+                    cashHtml += '<tr>';
+                    cashHtml += '<td>' + (item.date || '-') + '</td>';
+                    cashHtml += '<td>' + (item.project || '-') + '</td>';
+                    cashHtml += '<td>' + (item.amount || '0') + ' ש"ח</td>';
+                    cashHtml += '<td>' + (item.notes || '-') + '</td>';
+                    cashHtml += '</tr>';
+                });
+                cashHtml += '</tbody></table>';
+            } else {
+                cashHtml = '<p class="text-muted text-center">אין תרומות מזומן</p>';
+            }
+            $('#cashDonationsContent').html(cashHtml);
+            
+            // Populate standing orders
+            var soHtml = '<h6>הוראת קבע כח:</h6>';
+            if (data.standing_orders_koach && data.standing_orders_koach.length > 0) {
+                soHtml += '<table class="table table-sm"><thead><tr><th>סכום</th><th>תאריך</th><th>הערות</th></tr></thead><tbody>';
+                data.standing_orders_koach.forEach(function(item) {
+                    soHtml += '<tr><td>' + (item.amount || '-') + '</td><td>' + (item.date || '-') + '</td><td>' + (item.notes || '-') + '</td></tr>';
+                });
+                soHtml += '</tbody></table>';
+            } else {
+                soHtml += '<p class="text-muted">אין הוראות קבע כח</p>';
+            }
+            
+            soHtml += '<h6 class="mt-3">הוראת קבע אחים:</h6>';
+            if (data.standing_orders_achim && data.standing_orders_achim.length > 0) {
+                soHtml += '<table class="table table-sm"><thead><tr><th>סכום</th><th>תאריך</th><th>הערות</th></tr></thead><tbody>';
+                data.standing_orders_achim.forEach(function(item) {
+                    soHtml += '<tr><td>' + (item.amount || '-') + '</td><td>' + (item.date || '-') + '</td><td>' + (item.notes || '-') + '</td></tr>';
+                });
+                soHtml += '</tbody></table>';
+            } else {
+                soHtml += '<p class="text-muted">אין הוראות קבע אחים</p>';
+            }
+            $('#standingOrdersContent').html(soHtml);
+            
+            // Populate supports
+            var supportsHtml = '';
+            if (data.supports && data.supports.length > 0) {
+                supportsHtml = '<table class="table table-sm"><thead><tr><th>תאריך</th><th>סכום</th><th>סוג</th><th>הערות</th></tr></thead><tbody>';
+                data.supports.forEach(function(item) {
+                    supportsHtml += '<tr><td>' + (item.date || '-') + '</td><td>' + (item.amount || '-') + '</td><td>' + (item.type || '-') + '</td><td>' + (item.notes || '-') + '</td></tr>';
+                });
+                supportsHtml += '</tbody></table>';
+            } else {
+                supportsHtml = '<p class="text-muted">לא נמצאו תמיכות</p>';
+            }
+            $('#supportsContent').html(supportsHtml);
+        },
+        error: function() {
+            alert('שגיאה בטעינת הפרטים');
+        }
+    });
+}
+
+// Toggle edit mode in person details modal
+function togglePersonDetailsEditMode(editMode) {
+    if (editMode) {
+        // Switch to edit mode
+        $('#editPersonFromDetailsBtn').addClass('d-none');
+        $('#savePersonFromDetailsBtn').removeClass('d-none');
+        $('#cancelEditFromDetailsBtn').removeClass('d-none');
+        
+        // Convert text to inputs
+        var personData = $('#basicInfoContent').data('person-data');
+        if (!personData) return;
+        
+        var hebrewFields = {
+            'amarchal': 'אמרכל',
+            'gizbar': 'גזבר',
+            'software_id': 'מזהה תוכנה',
+            'donor_number': 'מס תורם',
+            'chatan_harar': "חתן הר'ר",
+            'family_name': 'משפחה',
+            'first_name': 'שם',
+            'name_for_mail': 'שם לדואר',
+            'full_name': 'שם ומשפחה ביחד',
+            'husband_id': 'תעודת זהות בעל',
+            'wife_id': 'תעודת זהות אשה',
+            'address': 'כתובת',
+            'mail_to': 'דואר ל',
+            'neighborhood': 'שכונה / אזור',
+            'floor': 'קומה',
+            'city': 'עיר',
+            'phone': 'טלפון',
+            'husband_mobile': 'נייד בעל',
+            'wife_name': 'שם האשה',
+            'wife_mobile': 'נייד אשה',
+            'updated_email': 'כתובת מייל מעודכן',
+            'husband_email': 'מייל בעל',
+            'wife_email': 'מייל אשה',
+            'receipts_to': 'קבלות ל',
+            'alphon': 'אלפון',
+            'send_messages': 'שליחת הודעות',
+            'last_change': 'שינוי אחרון'
+        };
+        
+        var editHtml = '';
+        var p = personData;
+        
+        // פרטים אישיים
+        editHtml += '<div class="col-12"><h6 class="text-primary mb-3"><i class="bi bi-person-badge me-2"></i>פרטים אישיים</h6></div>';
+        
+        var personalFields = [
+            {key: 'family_name', label: 'משפחה'},
+            {key: 'first_name', label: 'שם'},
+            {key: 'name_for_mail', label: 'שם לדואר'},
+            {key: 'wife_name', label: 'שם האשה'},
+            {key: 'husband_mobile', label: 'נייד בעל'},
+            {key: 'wife_mobile', label: 'נייד אשה'},
+            {key: 'phone', label: 'טלפון'},
+            {key: 'husband_id', label: 'תעודת זהות בעל'},
+            {key: 'wife_id', label: 'תעודת זהות אשה'},
+            {key: 'address', label: 'כתובת'},
+            {key: 'mail_to', label: 'דואר ל'},
+            {key: 'neighborhood', label: 'שכונה / אזור'},
+            {key: 'floor', label: 'קומה'},
+            {key: 'city', label: 'עיר'},
+            {key: 'updated_email', label: 'כתובת מייל מעודכן'},
+            {key: 'husband_email', label: 'מייל בעל'},
+            {key: 'wife_email', label: 'מייל אשה'}
+        ];
+        
+        // Display editable personal fields
+        personalFields.forEach(function(field) {
+            editHtml += '<div class="col-md-6 mb-2">';
+            editHtml += '<label class="form-label fw-bold">' + field.label + ':</label>';
+            editHtml += '<input type="text" class="form-control form-control-sm" data-field="' + field.key + '" value="' + (p[field.key] || '') + '">';
+            editHtml += '</div>';
+        });
+        
+        // Add separator
+        editHtml += '<div class="col-12"><hr class="my-3"></div>';
+        
+        // פרטים נוספים
+        editHtml += '<div class="col-12"><h6 class="text-primary mb-3"><i class="bi bi-info-circle me-2"></i>פרטים נוספים</h6></div>';
+        
+        // Display remaining editable fields
+        var displayedKeys = personalFields.map(function(f) { return f.key; });
+        displayedKeys.push('id', 'created_at');
+        
+        for (var key in p) {
+            if (displayedKeys.indexOf(key) === -1 && p[key]) {
+                var label = hebrewFields[key] || key;
+                editHtml += '<div class="col-md-6 mb-2">';
+                editHtml += '<label class="form-label fw-bold">' + label + ':</label>';
+                editHtml += '<input type="text" class="form-control form-control-sm" data-field="' + key + '" value="' + (p[key] || '') + '">';
+                editHtml += '</div>';
+            }
+        }
+        
+        $('#basicInfoContent').html(editHtml);
+        
+    } else {
+        // Switch to view mode
+        $('#editPersonFromDetailsBtn').removeClass('d-none');
+        $('#savePersonFromDetailsBtn').addClass('d-none');
+        $('#cancelEditFromDetailsBtn').addClass('d-none');
+    }
+}
