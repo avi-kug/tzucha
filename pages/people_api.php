@@ -51,21 +51,21 @@ try {
             // Add a new person
             $stmt = $pdo->prepare("INSERT INTO people (
                 amarchal, gizbar, software_id, donor_number, chatan_harar, family_name, first_name, 
-                name_for_mail, full_name, husband_id, wife_id, address, mail_to, neighborhood, 
+                name_for_mail, full_name, husband_id, wife_id, phone_id, address, mail_to, neighborhood, 
                 floor, city, phone, husband_mobile, wife_name, wife_mobile, updated_email, 
                 husband_email, wife_email, receipts_to, alphon, send_messages
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             
             $stmt->execute([
                 $_POST['amarchal'] ?? '', $_POST['gizbar'] ?? '', $_POST['software_id'] ?? '',
                 $_POST['donor_number'] ?? '', $_POST['chatan_harar'] ?? '', $_POST['family_name'] ?? '',
                 $_POST['first_name'] ?? '', $_POST['name_for_mail'] ?? '', $_POST['full_name'] ?? '',
-                $_POST['husband_id'] ?? '', $_POST['wife_id'] ?? '', $_POST['address'] ?? '',
-                $_POST['mail_to'] ?? '', $_POST['neighborhood'] ?? '', $_POST['floor'] ?? '',
-                $_POST['city'] ?? '', $_POST['phone'] ?? '', $_POST['husband_mobile'] ?? '',
-                $_POST['wife_name'] ?? '', $_POST['wife_mobile'] ?? '', $_POST['updated_email'] ?? '',
-                $_POST['husband_email'] ?? '', $_POST['wife_email'] ?? '', $_POST['receipts_to'] ?? '',
-                $_POST['alphon'] ?? '', $_POST['send_messages'] ?? ''
+                $_POST['husband_id'] ?? '', $_POST['wife_id'] ?? '', $_POST['phone_id'] ?? '',
+                $_POST['address'] ?? '', $_POST['mail_to'] ?? '', $_POST['neighborhood'] ?? '',
+                $_POST['floor'] ?? '', $_POST['city'] ?? '', $_POST['phone'] ?? '',
+                $_POST['husband_mobile'] ?? '', $_POST['wife_name'] ?? '', $_POST['wife_mobile'] ?? '',
+                $_POST['updated_email'] ?? '', $_POST['husband_email'] ?? '', $_POST['wife_email'] ?? '',
+                $_POST['receipts_to'] ?? '', $_POST['alphon'] ?? '', $_POST['send_messages'] ?? ''
             ]);
             
             $newId = $pdo->lastInsertId();
@@ -82,7 +82,7 @@ try {
             $stmt = $pdo->prepare("UPDATE people SET 
                 amarchal = ?, gizbar = ?, software_id = ?, donor_number = ?, chatan_harar = ?,
                 family_name = ?, first_name = ?, name_for_mail = ?, full_name = ?, 
-                husband_id = ?, wife_id = ?, address = ?, mail_to = ?, neighborhood = ?, 
+                husband_id = ?, wife_id = ?, phone_id = ?, address = ?, mail_to = ?, neighborhood = ?, 
                 floor = ?, city = ?, phone = ?, husband_mobile = ?, wife_name = ?, 
                 wife_mobile = ?, updated_email = ?, husband_email = ?, wife_email = ?, 
                 receipts_to = ?, alphon = ?, send_messages = ?
@@ -92,12 +92,12 @@ try {
                 $_POST['amarchal'] ?? '', $_POST['gizbar'] ?? '', $_POST['software_id'] ?? '',
                 $_POST['donor_number'] ?? '', $_POST['chatan_harar'] ?? '', $_POST['family_name'] ?? '',
                 $_POST['first_name'] ?? '', $_POST['name_for_mail'] ?? '', $_POST['full_name'] ?? '',
-                $_POST['husband_id'] ?? '', $_POST['wife_id'] ?? '', $_POST['address'] ?? '',
-                $_POST['mail_to'] ?? '', $_POST['neighborhood'] ?? '', $_POST['floor'] ?? '',
-                $_POST['city'] ?? '', $_POST['phone'] ?? '', $_POST['husband_mobile'] ?? '',
-                $_POST['wife_name'] ?? '', $_POST['wife_mobile'] ?? '', $_POST['updated_email'] ?? '',
-                $_POST['husband_email'] ?? '', $_POST['wife_email'] ?? '', $_POST['receipts_to'] ?? '',
-                $_POST['alphon'] ?? '', $_POST['send_messages'] ?? '', $id
+                $_POST['husband_id'] ?? '', $_POST['wife_id'] ?? '', $_POST['phone_id'] ?? '',
+                $_POST['address'] ?? '', $_POST['mail_to'] ?? '', $_POST['neighborhood'] ?? '',
+                $_POST['floor'] ?? '', $_POST['city'] ?? '', $_POST['phone'] ?? '',
+                $_POST['husband_mobile'] ?? '', $_POST['wife_name'] ?? '', $_POST['wife_mobile'] ?? '',
+                $_POST['updated_email'] ?? '', $_POST['husband_email'] ?? '', $_POST['wife_email'] ?? '',
+                $_POST['receipts_to'] ?? '', $_POST['alphon'] ?? '', $_POST['send_messages'] ?? '', $id
             ]);
             
             echo json_encode(['success' => true, 'message' => 'Updated successfully']);
@@ -117,7 +117,7 @@ try {
             $allowedFields = [
                 'amarchal', 'gizbar', 'software_id', 'donor_number', 'chatan_harar',
                 'family_name', 'first_name', 'name_for_mail', 'full_name',
-                'husband_id', 'wife_id', 'address', 'mail_to', 'neighborhood',
+                'husband_id', 'wife_id', 'phone_id', 'address', 'mail_to', 'neighborhood',
                 'floor', 'city', 'phone', 'husband_mobile', 'wife_name',
                 'wife_mobile', 'updated_email', 'husband_email', 'wife_email',
                 'receipts_to', 'alphon', 'send_messages'

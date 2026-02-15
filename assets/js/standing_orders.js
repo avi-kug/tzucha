@@ -39,14 +39,23 @@
             },
             pageLength: 25,
             order: [[0, 'desc']],
-            dom: '<"d-flex justify-content-between align-items-center mb-2"lf>rt<"d-flex justify-content-between align-items-center mt-2"ip>'
+            dom: '<"d-flex justify-content-between align-items-center mb-2"lf>rt<"d-flex justify-content-between align-items-center mt-2"ip>',
+            stateSave: true,
+            stateDuration: -1
         };
-        ['#koachTable', '#achimTable', '#soAlphonTable'].forEach(function (sel) {
+        var alphonOpts = Object.assign({}, dtOpts, {
+            order: [[0, 'asc']]
+        });
+        ['#koachTable', '#achimTable'].forEach(function (sel) {
             var el = document.querySelector(sel);
             if (el && !jQuery.fn.DataTable.isDataTable(el)) {
                 jQuery(el).DataTable(Object.assign({}, dtOpts));
             }
         });
+        var alphonEl = document.querySelector('#soAlphonTable');
+        if (alphonEl && !jQuery.fn.DataTable.isDataTable(alphonEl)) {
+            jQuery(alphonEl).DataTable(alphonOpts);
+        }
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initDT);

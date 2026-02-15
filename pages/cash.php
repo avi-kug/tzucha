@@ -1,4 +1,69 @@
-<?php include '../templates/header.php'; ?>
+<?php
+// Load cash data from database BEFORE header
+require_once '../config/db.php';
+
+$cashData = ['data' => [], 'columns' => [], 'cached_at' => '', 'count' => 0];
+try {
+    $stmt = $pdo->query("SELECT * FROM cash_donations ORDER BY date DESC");
+    $donations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Get last sync time from database
+    $lastSyncStmt = $pdo->query("SELECT MAX(synced_at) as last_sync FROM cash_donations");
+    $lastSyncRow = $lastSyncStmt->fetch(PDO::FETCH_ASSOC);
+    $lastSync = $lastSyncRow['last_sync'] ?? date('Y-m-d H:i:s');
+    
+    if (!empty($donations)) {
+        $hebrewColumns = [
+            'id' => '#',
+            'name' => 'שם',
+            'family' => 'משפחה',
+            'address' => 'כתובת',
+            'city' => 'עיר',
+            'amount' => 'סכום',
+            'notes' => 'הערות',
+            'date' => 'תאריך',
+            'heb_date' => 'תאריך עברי',
+            'project' => 'פרוייקט',
+            'source' => 'מקור הנתון',
+            'name_gabay' => 'גבאי',
+            'name_amarkal' => 'אמרכל',
+            'creating_date' => 'תאריך יצירה',
+            'receipt_date' => 'תאריך קבלה',
+            'receipt_generated' => 'קבלה נוצרה',
+            'id_alfon' => 'מס\' אלפון',
+            'id_project' => 'מס\' פרוייקט',
+            'id_gabay' => 'מס\' גבאי',
+            'record' => 'הקלטת הערות',
+        ];
+        
+        $allKeys = array_keys($donations[0]);
+        $columns = array_map(function($key) use ($hebrewColumns) {
+            return $hebrewColumns[$key] ?? $key;
+        }, $allKeys);
+        
+        $recordsWithHebrewKeys = [];
+        foreach ($donations as $row) {
+            $hebrewRow = [];
+            foreach ($row as $key => $value) {
+                $hebrewKey = $hebrewColumns[$key] ?? $key;
+                $hebrewRow[$hebrewKey] = $value;
+            }
+            $recordsWithHebrewKeys[] = $hebrewRow;
+        }
+        
+        $cashData = [
+            'data' => $recordsWithHebrewKeys,
+            'columns' => $columns,
+            'cached_at' => $lastSync,
+            'count' => count($donations)
+        ];
+    }
+} catch (Exception $e) {
+    error_log('Cash data load error: ' . $e->getMessage());
+}
+
+include '../templates/header.php';
+?>
 
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
 <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.bootstrap5.min.css">
@@ -8,14 +73,13 @@
 
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i> 
-    <strong>לתשומת לבך:</strong> הנתונים נשמרים בדאטאבייס המקומי. 
-    לחץ על <strong>"רענן מ-ipapp.org"</strong> כדי לסנכרן נתונים עדכניים מהאתר החיצוני.
+    <strong>לתשומת לבך:</strong> הנתונים נטענים מהדאטאבייס המקומי (<?php echo number_format($cashData['count']); ?> רשומות). 
+    לחץ על <strong>"רענן מ-ipapp.org"</strong> לסנכרון עדכונים מהאתר החיצוני.
 </div>
 
 <div class="mb-3 d-flex justify-content-between align-items-center">
-    <span class="text-muted">נתונים מתוך ipapp.org/kupot</span>
+    <span class="text-muted">עודכן: <?php echo $cashData['cached_at']; ?></span>
     <div>
-        <span id="cacheInfo" class="text-muted me-3" style="font-size:0.85rem;"></span>
         <button id="addBtn" class="btn btn-sm btn-success me-2">
             <i class="bi bi-plus-circle"></i> הוספת תרומה
         </button>
@@ -25,12 +89,12 @@
     </div>
 </div>
 
-<div id="loadingIndicator" class="text-center py-4">
+<div id="loadingIndicator" class="text-center py-4" style="display:none;">
     <div class="spinner-border text-primary" role="status"></div>
     <div class="mt-2" id="loadingText">טוען נתונים...</div>
 </div>
 
-<div class="table-responsive" id="tableContainer" style="display:none;">
+<div class="table-responsive" id="tableContainer">
     <table id="cashTable" class="table table-bordered table-striped" style="width:100%">
         <thead><tr id="cashTableHead"></tr></thead>
         <tbody></tbody>
@@ -116,5 +180,10 @@
 <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
 <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
 
-<?php $pageScripts = ['../assets/js/cash.js?v=' . (@filemtime(__DIR__ . '/../assets/js/cash.js') ?: time())]; ?>
+<script>
+// Cash data loaded from server
+window.initialCashData = <?php echo json_encode($cashData, JSON_UNESCAPED_UNICODE); ?>;
+</script>
+
+<?php $pageScripts = ['../assets/js/cash.js?v=' . time()]; ?>
 <?php include '../templates/footer.php'; ?>

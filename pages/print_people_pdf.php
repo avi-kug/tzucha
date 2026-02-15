@@ -24,6 +24,17 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 
+// Helper function to convert column number to Excel column letter
+function getColumnLetter($columnNumber) {
+    $letter = '';
+    while ($columnNumber > 0) {
+        $columnNumber--;
+        $letter = chr(65 + ($columnNumber % 26)) . $letter;
+        $columnNumber = intval($columnNumber / 26);
+    }
+    return $letter;
+}
+
 // Check if request is POST
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     die('Invalid request');
@@ -143,8 +154,13 @@ foreach ($selected as $selectedName) {
         // Set up headers
         $row = 1;
         
+        // Calculate last column based on base columns + months (only for gizbar)
+        $baseColCount = $reportType === 'amarchal' ? 7 : 6; // 7 for amarchal (includes gizbar), 6 for gizbar
+        $monthColCount = ($reportType === 'gizbar') ? count($months) : 0; // Add months only for gizbar
+        $totalColCount = $baseColCount + $monthColCount;
+        $lastCol = getColumnLetter($totalColCount);
+        
         // בס"ד at top right
-        $lastCol = $reportType === 'amarchal' ? 'G' : 'F';
         $sheet->setCellValue($lastCol . $row, 'בס"ד');
         $sheet->getStyle($lastCol . $row)->getFont()->setBold(true)->setSize(14);
         $sheet->getStyle($lastCol . $row)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
@@ -170,14 +186,17 @@ foreach ($selected as $selectedName) {
         // Column headers
         if ($reportType === 'amarchal') {
             $headers = ['גזבר', 'משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
-            $sheet->fromArray($headers, null, 'A' . $row);
         } else {
             $headers = ['משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
-            $sheet->fromArray($headers, null, 'A' . $row);
+            // Add month columns to headers (only for gizbar)
+            foreach ($months as $month) {
+                $headers[] = $month;
+            }
         }
+        $sheet->fromArray($headers, null, 'A' . $row);
         
         // Style headers
-        $headerRange = 'A' . $row . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . $row;
+        $headerRange = 'A' . $row . ':' . $lastCol . $row;
         $sheet->getStyle($headerRange)->getFont()->setBold(true)->setSize(12)->getColor()->setRGB('FFFFFF');
         $sheet->getStyle($headerRange)->getFill()
             ->setFillType(Fill::FILL_SOLID)
@@ -215,10 +234,17 @@ foreach ($selected as $selectedName) {
                 ];
             }
             
+            // Add empty cells for month columns (only for gizbar)
+            if ($reportType === 'gizbar') {
+                foreach ($months as $month) {
+                    $rowData[] = '';
+                }
+            }
+            
             $sheet->fromArray($rowData, null, 'A' . $row);
             
             // Alternating row colors
-            $rowRange = 'A' . $row . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . $row;
+            $rowRange = 'A' . $row . ':' . $lastCol . $row;
             if (!$isOddRow) {
                 $sheet->getStyle($rowRange)->getFill()
                     ->setFillType(Fill::FILL_SOLID)
@@ -235,7 +261,7 @@ foreach ($selected as $selectedName) {
         
         // Style data rows with borders
         if ($row > $startDataRow) {
-            $dataRange = 'A' . $startDataRow . ':' . ($reportType === 'amarchal' ? 'G' : 'F') . ($row - 1);
+            $dataRange = 'A' . $startDataRow . ':' . $lastCol . ($row - 1);
             $sheet->getStyle($dataRange)->getBorders()->getAllBorders()
                 ->setBorderStyle(Border::BORDER_THIN)
                 ->getColor()->setRGB('CCCCCC');
@@ -276,8 +302,6 @@ foreach ($selected as $selectedName) {
         }
         
         // Set column widths based on content
-        $lastCol = $reportType === 'amarchal' ? 'G' : 'F';
-        
         // Auto-size all columns first
         foreach (range('A', $lastCol) as $col) {
             $sheet->getColumnDimension($col)->setAutoSize(true);
@@ -299,6 +323,11 @@ foreach ($selected as $selectedName) {
             $sheet->getColumnDimension('D')->setWidth(30); // כתובת
             $sheet->getColumnDimension('E')->setWidth(8);  // קומה
             $sheet->getColumnDimension('F')->setWidth(15); // עיר
+            // Set width for month columns (G onwards) - only for gizbar
+            $monthColStart = 7; // G = 7
+            for ($i = 0; $i < count($months); $i++) {
+                $sheet->getColumnDimension(getColumnLetter($monthColStart + $i))->setWidth(12);
+            }
         }
     } // End of if ($needsSpreadsheet)
 }
@@ -319,7 +348,19 @@ if ($needsSpreadsheet && $spreadsheet && $spreadsheet->getSheetCount() > 0) {
 
 // Generate filename
 $reportTypeHe = $reportType === 'amarchal' ? 'אמרכלים' : 'גזברים';
-$baseFilename = 'דוח_' . $reportTypeHe . '_' . date('Y-m-d_H-i-s');
+$reportTypeSingle = $reportType === 'amarchal' ? 'אמרכל' : 'גזבר';
+
+// Dynamic filename based on selection
+if (count($selected) === 1) {
+    // Single person selected - use their name
+    $personName = trim($selected[0]);
+    $baseFilename = $reportTypeSingle . '_' . $personName . '_' . date('Y-m-d_H-i-s');
+} else {
+    // Multiple people - show count
+    $count = count($selected);
+    $baseFilename = $count . '_' . $reportTypeHe . '_' . date('Y-m-d_H-i-s');
+}
+
 if (!empty($partLabel)) {
     $baseFilename .= '_' . $partLabel;
 }
@@ -667,6 +708,10 @@ try {
             $headers = ['גזבר', 'משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
         } else {
             $headers = ['משפחה', 'שם', 'נייד בעל', 'כתובת', 'קומה', 'עיר'];
+            // Add month columns to headers (only for gizbar)
+            foreach ($months as $month) {
+                $headers[] = $month;
+            }
         }
 
         $rowsHtml = '';
@@ -690,6 +735,13 @@ try {
                     $person['floor'] ?? '',
                     $person['city'] ?? ''
                 ];
+            }
+            
+            // Add empty cells for month columns (only for gizbar)
+            if ($reportType === 'gizbar') {
+                foreach ($months as $month) {
+                    $rowData[] = '';
+                }
             }
 
             $cells = array_map(function ($v) {

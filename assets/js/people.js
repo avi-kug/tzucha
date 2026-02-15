@@ -61,7 +61,6 @@
         if (window.__peopleInitDone) { return; }
         window.__peopleInitDone = true;
         const modal = new bootstrap.Modal(document.getElementById('personModal'));
-        let isEditMode = false;
 
         const messageEl = document.getElementById('messageModal');
         if (messageEl) {
@@ -72,7 +71,17 @@
         if ($.fn.DataTable.isDataTable('#peopleTable')) {
             $('#peopleTable').DataTable().clear().destroy();
         }
-        const tableStateKey = 'peopleTableState';
+        
+        // Clear old column state after reordering columns (Feb 2026)
+        const oldStateKeys = ['peopleTableState'];
+        oldStateKeys.forEach(key => {
+            if (localStorage.getItem(key)) {
+                localStorage.removeItem(key);
+            }
+        });
+        
+        const tableStateKey = 'peopleTableState_v2';
+        
         const table = $('#peopleTable').DataTable({
             destroy: true,
             retrieve: true,
@@ -86,9 +95,9 @@
                 paginate: { first: 'ראשון', last: 'אחרון', next: 'הבא', previous: 'הקודם' }
             },
             pageLength: 25,
-            autoWidth: true,
+            autoWidth: false,
             responsive: true,
-            order: [[6, 'asc']],
+            order: [[5, 'asc']],
             dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
             buttons: [
                 { extend: 'colvis', text: 'הצג/הסתר עמודות' }
@@ -102,9 +111,46 @@
                 return raw ? JSON.parse(raw) : null;
             },
             columnDefs: [
-                { orderable: false, targets: 0, width: '28px' },
-                { orderable: false, targets: -1 }
-            ]
+                { orderable: false, targets: 0, width: '28px', className: 'select-col' },
+                { orderable: false, targets: 1, width: '45px', className: 'text-center' },
+                { orderable: false, targets: -1, width: '100px', className: 'text-center' }
+            ],
+            drawCallback: function() {
+                // הצג את הטבלה אחרי שהעמודות סודרו
+                $('#peopleTable').addClass('dt-initialized');
+                
+                // הזז את השורה הראשונה ל-action bar
+                const firstRow = $('#peopleTable_wrapper > .row').first();
+                const actionBar = $('#peopleActionBar');
+                if (firstRow.length && actionBar.length && !actionBar.has(firstRow).length) {
+                    firstRow.prependTo(actionBar);
+                }
+                
+                // הזז את pagination למטה מחוץ לאזור הגלילה
+                const paginationRow = $('#peopleTable_wrapper > .row').last();
+                const paginationContainer = $('#full-tab .table-pagination');
+                if (paginationRow.length && paginationContainer.length && !paginationContainer.has(paginationRow).length) {
+                    paginationRow.appendTo(paginationContainer);
+                }
+            },
+            initComplete: function() {
+                // גם ב-init complete להבטיח שהטבלה תוצג
+                $('#peopleTable').addClass('dt-initialized');
+                
+                // הזז את השורה הראשונה (length + search) ל-action bar
+                const firstRow = $('#peopleTable_wrapper > .row').first();
+                const actionBar = $('#peopleActionBar');
+                if (firstRow.length && actionBar.length) {
+                    firstRow.prependTo(actionBar);
+                }
+                
+                // הזז את pagination למטה מחוץ לאזור הגלילה
+                const paginationRow = $('#peopleTable_wrapper > .row').last();
+                const paginationContainer = $('#full-tab .table-pagination');
+                if (paginationRow.length && paginationContainer.length) {
+                    paginationRow.appendTo(paginationContainer);
+                }
+            }
         });
 
         function applyColumnResize(selector, dtInstance) {
@@ -153,10 +199,8 @@
 
         $('#addPersonBtn').on('click', function() {
             if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
-            isEditMode = false;
             $('#personModalLabel').text('הוסף איש קשר חדש');
             $('#personForm')[0].reset();
-            $('#person_id').val('');
             modal.show();
         });
 
@@ -179,16 +223,39 @@
             }
         }
 
-        function ensureOption(selectId, value) {
-            if (!value) { return; }
-            const $select = $(selectId);
-            if ($select.find('option').filter(function(){ return $(this).val() === value; }).length === 0) {
-                $select.append($('<option>', { value: value, text: value }));
-            }
-        }
-
         $('#gizbar').on('change', function() {
             updateAmarchalFromGizbar(true);
+        });
+
+        $('#savePersonBtn').on('click', function() {
+            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
+            const formData = $('#personForm').serializeArray();
+            const payload = {};
+            formData.forEach(function(item) {
+                payload[item.name] = item.value;
+            });
+
+            payload.action = 'add';
+            payload.csrf_token = csrfToken;
+
+            $.ajax({
+                url: 'people_api.php',
+                method: 'POST',
+                data: payload,
+                success: function(response) {
+                    if (response.success) {
+                        modal.hide();
+                        window.location.reload();
+                    } else {
+                        alert('שגיאה בשמירה: ' + (response.error || 'לא ידוע'));
+                    }
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'שגיאה בשמירה';
+                    alert(msg);
+                },
+                dataType: 'json'
+            });
         });
 
         const amarchalModal = new bootstrap.Modal(document.getElementById('addAmarchalModal'));
@@ -239,91 +306,6 @@
 
         $('#saveGizbarBtn').on('click', function() {
             saveRepresentative('gizbar', '#gizbarPersonSelect', gizbarModal);
-        });
-
-        $('#peopleTable').on('click', '.edit-btn', function() {
-            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
-            isEditMode = true;
-            const id = $(this).data('id');
-            $('#personModalLabel').text('ערוך איש קשר');
-            $.ajax({
-                url: 'people_api.php?action=get_one&id=' + id,
-                method: 'GET',
-                success: function(response) {
-                    if (response.success) {
-                        const person = response.data;
-                        $('#person_id').val(person.id);
-                        ensureOption('#amarchal', person.amarchal || '');
-                        ensureOption('#gizbar', person.gizbar || '');
-                        $('#amarchal').val(person.amarchal || '');
-                        $('#gizbar').val(person.gizbar || '');
-                        $('#software_id').val(person.software_id || '');
-                        $('#donor_number').val(person.donor_number || '');
-                        $('#chatan_harar').val(person.chatan_harar || '');
-                        $('#family_name').val(person.family_name || '');
-                        $('#first_name').val(person.first_name || '');
-                        $('#name_for_mail').val(person.name_for_mail || '');
-                        updateFullNameFromParts();
-                        $('#husband_id').val(person.husband_id || '');
-                        $('#wife_id').val(person.wife_id || '');
-                        $('#address').val(person.address || '');
-                        $('#mail_to').val(person.mail_to || '');
-                        $('#neighborhood').val(person.neighborhood || '');
-                        $('#floor').val(person.floor || '');
-                        $('#city').val(person.city || '');
-                        $('#phone').val(person.phone || '');
-                        $('#husband_mobile').val(person.husband_mobile || '');
-                        $('#wife_name').val(person.wife_name || '');
-                        $('#wife_mobile').val(person.wife_mobile || '');
-                        $('#updated_email').val(person.updated_email || '');
-                        $('#husband_email').val(person.husband_email || '');
-                        $('#wife_email').val(person.wife_email || '');
-                        $('#receipts_to').val(person.receipts_to || '');
-                        $('#alphon').val(person.alphon || '');
-                        $('#send_messages').val(person.send_messages || '');
-                        updateAmarchalFromGizbar(false);
-                        modal.show();
-                    } else {
-                        alert('שגיאה בטעינת הנתונים');
-                    }
-                },
-                error: function() { alert('שגיאה בטעינת הנתונים'); },
-                dataType: 'json'
-            });
-        });
-
-        $('#savePersonBtn').on('click', function() {
-            if (!canEdit) { alert('אין הרשאה לעריכה'); return; }
-            const formData = $('#personForm').serializeArray();
-            const payload = {};
-            formData.forEach(function(item) {
-                payload[item.name] = item.value;
-            });
-
-            payload.action = isEditMode ? 'update_full' : 'add';
-            if (isEditMode) {
-                payload.id = $('#person_id').val();
-            }
-            payload.csrf_token = csrfToken;
-
-            $.ajax({
-                url: 'people_api.php',
-                method: 'POST',
-                data: payload,
-                success: function(response) {
-                    if (response.success) {
-                        modal.hide();
-                        window.location.reload();
-                    } else {
-                        alert('שגיאה בשמירה: ' + (response.error || 'לא ידוע'));
-                    }
-                },
-                error: function(xhr) {
-                    const msg = xhr.responseJSON && xhr.responseJSON.error ? xhr.responseJSON.error : 'שגיאה בשמירה';
-                    alert(msg);
-                },
-                dataType: 'json'
-            });
         });
 
         function updateDeleteSelectedState() {
@@ -409,11 +391,13 @@
         if ($('#amarchalTable').length) {
             if ($.fn.DataTable.isDataTable('#amarchalTable')) { $('#amarchalTable').DataTable().clear().destroy(); }
             const amarchalStateKey = 'amarchalTableState';
+            
             amarchalTable = $('#amarchalTable').DataTable({
                 destroy: true,
                 retrieve: true,
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
                 pageLength: 25,
+                autoWidth: false,
                 order: [[0, 'asc']],
                 dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
                 buttons: [
@@ -426,6 +410,40 @@
                 stateLoadCallback: function() {
                     const raw = localStorage.getItem(amarchalStateKey);
                     return raw ? JSON.parse(raw) : null;
+                },
+                drawCallback: function() {
+                    $('#amarchalTable').addClass('dt-initialized');
+                    
+                    // הזז את השורה הראשונה ל-action bar
+                    const firstRow = $('#amarchalTable_wrapper > .row').first();
+                    const actionBar = $('#amarchalActionBar');
+                    if (firstRow.length && actionBar.length && !actionBar.has(firstRow).length) {
+                        firstRow.prependTo(actionBar);
+                    }
+                    
+                    // הזז את pagination למטה מחוץ לאזור הגלילה
+                    const paginationRow = $('#amarchalTable_wrapper > .row').last();
+                    const paginationContainer = $('#amarchal-tab .table-pagination');
+                    if (paginationRow.length && paginationContainer.length && !paginationContainer.has(paginationRow).length) {
+                        paginationRow.appendTo(paginationContainer);
+                    }
+                },
+                initComplete: function() {
+                    $('#amarchalTable').addClass('dt-initialized');
+                    
+                    // הזז את השורה הראשונה (length + search) ל-action bar
+                    const firstRow = $('#amarchalTable_wrapper > .row').first();
+                    const actionBar = $('#amarchalActionBar');
+                    if (firstRow.length && actionBar.length) {
+                        firstRow.prependTo(actionBar);
+                    }
+                    
+                    // הזז את pagination למטה מחוץ לאזור הגלילה
+                    const paginationRow = $('#amarchalTable_wrapper > .row').last();
+                    const paginationContainer = $('#amarchal-tab .table-pagination');
+                    if (paginationRow.length && paginationContainer.length) {
+                        paginationRow.appendTo(paginationContainer);
+                    }
                 }
             });
             applyColumnResize('#amarchalTable', amarchalTable);
@@ -436,11 +454,13 @@
         if ($('#gizbarTable').length) {
             if ($.fn.DataTable.isDataTable('#gizbarTable')) { $('#gizbarTable').DataTable().clear().destroy(); }
             const gizbarStateKey = 'gizbarTableState';
+            
             gizbarTable = $('#gizbarTable').DataTable({
                 destroy: true,
                 retrieve: true,
                 language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
                 pageLength: 25,
+                autoWidth: false,
                 order: [[0, 'asc']],
                 dom: "<'row'<'col-md-6'l><'col-md-6'f>>Brt<'row'<'col-md-6'i><'col-md-6'p>>",
                 buttons: [
@@ -453,6 +473,40 @@
                 stateLoadCallback: function() {
                     const raw = localStorage.getItem(gizbarStateKey);
                     return raw ? JSON.parse(raw) : null;
+                },
+                drawCallback: function() {
+                    $('#gizbarTable').addClass('dt-initialized');
+                    
+                    // הזז את השורה הראשונה ל-action bar
+                    const firstRow = $('#gizbarTable_wrapper > .row').first();
+                    const actionBar = $('#gizbarActionBar');
+                    if (firstRow.length && actionBar.length && !actionBar.has(firstRow).length) {
+                        firstRow.prependTo(actionBar);
+                    }
+                    
+                    // הזז את pagination למטה מחוץ לאזור הגלילה
+                    const paginationRow = $('#gizbarTable_wrapper > .row').last();
+                    const paginationContainer = $('#gizbar-tab .table-pagination');
+                    if (paginationRow.length && paginationContainer.length && !paginationContainer.has(paginationRow).length) {
+                        paginationRow.appendTo(paginationContainer);
+                    }
+                },
+                initComplete: function() {
+                    $('#gizbarTable').addClass('dt-initialized');
+                    
+                    // הזז את השורה הראשונה (length + search) ל-action bar
+                    const firstRow = $('#gizbarTable_wrapper > .row').first();
+                    const actionBar = $('#gizbarActionBar');
+                    if (firstRow.length && actionBar.length) {
+                        firstRow.prependTo(actionBar);
+                    }
+                    
+                    // הזז את pagination למטה מחוץ לאזור הגלילה
+                    const paginationRow = $('#gizbarTable_wrapper > .row').last();
+                    const paginationContainer = $('#gizbar-tab .table-pagination');
+                    if (paginationRow.length && paginationContainer.length) {
+                        paginationRow.appendTo(paginationContainer);
+                    }
                 }
             });
             applyColumnResize('#gizbarTable', gizbarTable);
@@ -861,7 +915,8 @@ function showPersonDetailsModal(softwareId, personId, personName) {
     var hebrewFields = {
         'amarchal': 'אמרכל',
         'gizbar': 'גזבר',
-        'software_id': 'מזהה תוכנה',
+        'software_id': 'מזהה קופות',
+        'phone_id': 'מזהה מלבושי כבוד',
         'donor_number': 'מס תורם',
         'chatan_harar': "חתן הר'ר",
         'family_name': 'משפחה',
@@ -885,7 +940,9 @@ function showPersonDetailsModal(softwareId, personId, personName) {
         'receipts_to': 'קבלות ל',
         'alphon': 'אלפון',
         'send_messages': 'שליחת הודעות',
-        'last_change': 'שינוי אחרון'
+        'last_change': 'שינוי אחרון',
+        'foreign_id': 'מזהה מלבושי כבוד',
+        'kavod_id': 'מזהה מלבושי כבוד'
     };
     
     // Load person details from API
@@ -910,6 +967,10 @@ function showPersonDetailsModal(softwareId, personId, personName) {
                     {key: 'family_name', label: 'משפחה'},
                     {key: 'first_name', label: 'שם'},
                     {key: 'name_for_mail', label: 'שם לדואר'},
+                    {key: 'software_id', label: 'מזהה קופות'},
+                    {key: 'phone_id', label: 'מזהה מלבושי כבוד'},
+                    {key: 'foreign_id', label: 'מזהה מלבושי כבוד'},
+                    {key: 'kavod_id', label: 'מזהה מלבושי כבוד'},
                     {key: 'wife_name', label: 'שם האשה'},
                     {key: 'husband_mobile', label: 'נייד בעל'},
                     {key: 'wife_mobile', label: 'נייד אשה'},
@@ -977,7 +1038,7 @@ function showPersonDetailsModal(softwareId, personId, personName) {
             $('#cashDonationsContent').html(cashHtml);
             
             // Populate standing orders
-            var soHtml = '<h6>הוראת קבע כח:</h6>';
+            var soHtml = '<h6>הוראת קבע כח הרבים:</h6>';
             if (data.standing_orders_koach && data.standing_orders_koach.length > 0) {
                 soHtml += '<table class="table table-sm"><thead><tr><th>סכום</th><th>תאריך</th><th>הערות</th></tr></thead><tbody>';
                 data.standing_orders_koach.forEach(function(item) {
@@ -985,10 +1046,10 @@ function showPersonDetailsModal(softwareId, personId, personName) {
                 });
                 soHtml += '</tbody></table>';
             } else {
-                soHtml += '<p class="text-muted">אין הוראות קבע כח</p>';
+                soHtml += '<p class="text-muted">אין הוראות קבע כח הרבים</p>';
             }
             
-            soHtml += '<h6 class="mt-3">הוראת קבע אחים:</h6>';
+            soHtml += '<h6 class="mt-3">הוראת קבע אחים לחסד:</h6>';
             if (data.standing_orders_achim && data.standing_orders_achim.length > 0) {
                 soHtml += '<table class="table table-sm"><thead><tr><th>סכום</th><th>תאריך</th><th>הערות</th></tr></thead><tbody>';
                 data.standing_orders_achim.forEach(function(item) {
@@ -996,7 +1057,7 @@ function showPersonDetailsModal(softwareId, personId, personName) {
                 });
                 soHtml += '</tbody></table>';
             } else {
-                soHtml += '<p class="text-muted">אין הוראות קבע אחים</p>';
+                soHtml += '<p class="text-muted">אין הוראות קבע אחים לחסד</p>';
             }
             $('#standingOrdersContent').html(soHtml);
             
@@ -1034,7 +1095,8 @@ function togglePersonDetailsEditMode(editMode) {
         var hebrewFields = {
             'amarchal': 'אמרכל',
             'gizbar': 'גזבר',
-            'software_id': 'מזהה תוכנה',
+            'software_id': 'מזהה קופות',
+            'phone_id': 'מזהה מלבושי כבוד',
             'donor_number': 'מס תורם',
             'chatan_harar': "חתן הר'ר",
             'family_name': 'משפחה',
@@ -1058,7 +1120,9 @@ function togglePersonDetailsEditMode(editMode) {
             'receipts_to': 'קבלות ל',
             'alphon': 'אלפון',
             'send_messages': 'שליחת הודעות',
-            'last_change': 'שינוי אחרון'
+            'last_change': 'שינוי אחרון',
+            'foreign_id': 'מזמדה מלבושי כבוד',
+            'kavod_id': 'מזהה מלבושי כבוד'
         };
         
         var editHtml = '';
@@ -1071,6 +1135,10 @@ function togglePersonDetailsEditMode(editMode) {
             {key: 'family_name', label: 'משפחה'},
             {key: 'first_name', label: 'שם'},
             {key: 'name_for_mail', label: 'שם לדואר'},
+            {key: 'software_id', label: 'מזהה קופות'},
+            {key: 'phone_id', label: 'מזהה מלבושי כבוד'},
+            {key: 'foreign_id', label: 'מזהה מלבושי כבוד'},
+            {key: 'kavod_id', label: 'מזהה מלבושי כבוד'},
             {key: 'wife_name', label: 'שם האשה'},
             {key: 'husband_mobile', label: 'נייד בעל'},
             {key: 'wife_mobile', label: 'נייד אשה'},

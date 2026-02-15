@@ -1,0 +1,232 @@
+<?php
+// cash_api.php
+// Fetches donation data from ipapp.org with auto-login + LOCAL CACHE
+
+header('Content-Type: application/json; charset=utf-8');
+
+// --- Load .env ---
+$envPath = dirname(__DIR__) . '/.env';
+if (is_readable($envPath)) {
+    $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        $line = trim($line);
+        if ($line === '' || str_starts_with($line, '#')) continue;
+        $parts = explode('=', $line, 2);
+        if (count($parts) !== 2) continue;
+        $key = trim($parts[0]);
+        $value = trim($parts[1]);
+        if ($key === '') continue;
+        if ((str_starts_with($value, '"') && str_ends_with($value, '"')) ||
+            (str_starts_with($value, "'") && str_ends_with($value, "'"))) {
+            $value = substr($value, 1, -1);
+        }
+        if (getenv($key) === false) {
+            putenv("$key=$value");
+        }
+    }
+}
+
+// --- CONFIG ---
+$ipappBaseUrl  = 'https://ipapp.org';
+$ipappApiUrl   = 'https://ipapp.org/kupot/?view=donation';
+$ipappUser     = getenv('IPAPP_USER');     // amshinov
+$ipappPass     = getenv('IPAPP_PASS');     // tzucha
+$ipappCode     = getenv('IPAPP_CODE');     // 147258
+$storageDir    = dirname(__DIR__) . '/storage';
+$cookieFile    = $storageDir . '/ipapp_cookie.txt';
+$cacheFile     = $storageDir . '/ipapp_cache.json';
+$cacheMaxAge   = 3600; // Cache for 1 hour
+
+if (!is_dir($storageDir)) {
+    mkdir($storageDir, 0700, true);
+}
+
+if (!$ipappUser || !$ipappPass) {
+    http_response_code(500);
+    echo json_encode(['error' => 'חסרים פרטי התחברות ל-ipapp.org']);
+    exit;
+}
+
+// ?refresh=1 forces re-fetch from ipapp
+$forceRefresh = isset($_GET['refresh']) && $_GET['refresh'] == '1';
+
+// ============================================================
+// CACHE: If cached data exists and is fresh, return it instantly
+// ============================================================
+if (!$forceRefresh && file_exists($cacheFile)) {
+    $cacheAge = time() - filemtime($cacheFile);
+    if ($cacheAge < $cacheMaxAge) {
+        $cached = file_get_contents($cacheFile);
+        if ($cached) {
+            echo $cached;
+            exit;
+        }
+    }
+}
+
+// ============================================================
+// Fetch with authentication
+// ============================================================
+
+function ipapp_fetch(string $url, string $user, string $pass, string $code): array {
+    $ch = curl_init();
+    
+    // Try multiple authentication methods
+    $authAttempts = [
+        // Attempt 1: user, pass, code as query params
+        ['user' => $user, 'pass' => $pass, 'code' => $code],
+        // Attempt 2: username, password, code
+        ['username' => $user, 'password' => $pass, 'code' => $code],
+        // Attempt 3: Just user and password
+        ['user' => $user, 'password' => $pass],
+    ];
+    
+    $separator = (strpos($url, '?') === false) ? '?' : '&';
+    
+    foreach ($authAttempts as $params) {
+        $testUrl = $url . $separator . http_build_query($params);
+        
+        curl_setopt($ch, CURLOPT_URL, $testUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_TIMEOUT        => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_USERAGENT      => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            CURLOPT_HTTPHEADER     => [
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: he-IL,he;q=0.9',
+            ],
+            // Also try Basic Auth
+            CURLOPT_HTTPAUTH => CURLAUTH_BASIC,
+            CURLOPT_USERPWD  => "$user:$pass"
+        ]);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        
+        // Check if response looks valid (contains table or substantial data)
+        if ($httpCode === 200 && strlen($response) > 1000 && 
+            (strpos($response, '<table') !== false || strpos($response, '<tr') !== false)) {
+            $error = curl_error($ch);
+            curl_close($ch);
+            return ['response' => $response, 'httpCode' => $httpCode, 'error' => $error];
+        }
+    }
+    
+    // If all failed, return last response
+    $error = curl_error($ch);
+    curl_close($ch);
+    return ['response' => $response ?? '', 'httpCode' => $httpCode ?? 0, 'error' => $error];
+}
+
+// ============================================================
+// Parse HTML table to extract donation data
+// ============================================================
+function parseHtmlTable(string $html): array {
+    $dom = new DOMDocument();
+    @$dom->loadHTML(mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8'));
+    $xpath = new DOMXPath($dom);
+    
+    // Find the main table (adjust selector as needed)
+    $tables = $xpath->query('//table');
+    if ($tables->length === 0) {
+        return ['headers' => [], 'rows' => []];
+    }
+    
+    $table = $tables->item(0); // Get first table
+    
+    // Extract headers
+    $headers = [];
+    $headerRows = $xpath->query('.//thead//tr/th | .//tr[1]/th', $table);
+    if ($headerRows->length > 0) {
+        foreach ($headerRows as $th) {
+            $headers[] = trim($th->textContent);
+        }
+    } else {
+        // Try to get headers from first row if no thead
+        $firstRow = $xpath->query('.//tr[1]/td', $table);
+        foreach ($firstRow as $td) {
+            $headers[] = trim($td->textContent);
+        }
+    }
+    
+    // Extract data rows
+    $rows = [];
+    $dataRows = $xpath->query('.//tbody//tuser, string $pass, string $code): array {
+    $ch = curl_init($url);
+    
+    // Try with query parameters in URL
+    $urlWithAuth = $url;
+    $separator = (strpos($url, '?') === false) ? '?' : '&';
+    $urlWithAuth .= $separator . http_build_query([
+        'user' => $user,
+        'pass' => $pass,
+        'code' => $code
+    ]);
+    
+    curl_setopt($ch, CURLOPT_URL, $urlWithAuth);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_TIMEOUT        => 60,
+        CURLOPT_FOLLOWLOCATION => true,
+        CFetch data with authentication
+// ============================================================
+$result = ipapp_fetch($ipappApiUrl, $ipappUser, $ipappPass, $ipappCode);/ ============================================================
+$result = ipapp_fetch($ipappApiUrl, $cookieFile);
+
+// If we get redirected to login or unauthorized, try logging in
+if ($result['httpCode'] !== 200 || strpos($result['response'], 'login') !== false) {
+    $loginResult = ipapp_login($ipappLoginUrl, $ipappUser, $ipappPass, $ipappCode, $cookieFile);
+    
+    if (!$loginResult['success']) {
+        http_response_code(401);
+        echo json_encode(['error' => 'ההתחברות ל-ipapp.org נכשלה']);
+        exit;
+    }
+    
+    // Try fetching again after login
+    $result = ipapp_fetch($ipappApiUrl, $cookieFile);
+}
+
+if ($result['httpCode'] !== 200 || !$result['response']) {
+    http_response_code(502);
+    echo json_encode([
+        'error' => 'שגיאה בשליפת נתונים מ-ipapp.org',
+        'httpCode' => $result['httpCode'],
+        'details' => $result['error']
+    ]);
+    exit;
+}
+
+// Parse the HTML table
+$tableData = parseHtmlTable($result['response']);
+
+if (empty($tableData['headers']) || empty($tableData['rows'])) {
+    http_response_code(500);
+    echo json_encode(['error' => 'לא נמצאה טבלה בדף או הטבלה ריקה']);
+    exit;
+}
+
+// Convert to associative array format
+$records = [];
+foreach ($tableData['rows'] as $row) {
+    $record = [];
+    foreach ($tableData['headers'] as $i => $header) {
+        $record[$header] = $row[$i] ?? null;
+    }
+    $records[] = $record;
+}
+
+$output = json_encode([
+    'data'      => $records,
+    'columns'   => $tableData['headers'],
+    'cached_at' => date('Y-m-d H:i:s'),
+    'count'     => count($records),
+], JSON_UNESCAPED_UNICODE);
+
+// Save to cache
+file_put_contents($cacheFile, $output);
+
+echo $output;

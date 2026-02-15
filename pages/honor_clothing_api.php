@@ -49,6 +49,72 @@ if (!$kavodUser || !$kavodPass) {
 // Columns to exclude (too heavy, not needed for display)
 $hiddenColumns = ['json_draft', 'previous_sales_orders'];
 
+// Column name translations (English to Hebrew)
+$columnTranslations = [
+    'id' => 'מזהה',
+    'phone_id' => 'מזהה טלפון',
+    'husband_tz' => 'ת״ז בעל',
+    'wife_tz' => 'ת״ז אישה',
+    'husband_first' => 'שם פרטי בעל',
+    'wife_first' => 'שם פרטי אישה',
+    'last_name' => 'שם משפחה',
+    'street' => 'רחוב',
+    'neighborhood' => 'שכונה',
+    'house_number' => 'מספר בית',
+    'apartment_number' => 'מספר דירה',
+    'city' => 'עיר',
+    'husband_phone' => 'טלפון בעל',
+    'wife_phone' => 'טלפון אישה',
+    'phone' => 'טלפון ראשי',
+    'email' => 'אימייל',
+    'number_of_childern' => 'מספר ילדים',
+    'number_of_married_childern' => 'ילדים נשואים',
+    'organization_id' => 'מזהה ארגון',
+    'branch_id' => 'מזהה סניף',
+    'created_by_user_id' => 'נוצר ע״י',
+    'status_id' => 'מזהה סטטוס',
+    'husband_work' => 'עיסוק הבעל',
+    'income_per_person' => 'הכנסה לנפש',
+    'marital_status' => 'מצב משפחתי',
+    'hat_style' => 'סגנון כובע',
+    'suite_style' => 'סגנון חליפה',
+    'comments' => 'הערות',
+    'phone_spam' => 'טלפון ספאם',
+    'husband_phone_spam' => 'טלפון בעל ספאם',
+    'wife_phone_spam' => 'טלפון אישה ספאם',
+    'correct_details' => 'פרטים מאומתים',
+    'acknowledge' => 'אישור',
+    'waived' => 'ויתור',
+    'last_form_login' => 'כניסה אחרונה',
+    'update_member_percent' => 'אחוז עדכון',
+    'created' => 'תאריך יצירה',
+    'male0to2credit' => 'קרדיט בנים 0–2',
+    'male2to13credit' => 'קרדיט בנים 2–13',
+    'female0to2credit' => 'קרדיט בנות 0–2',
+    'female2to16credit' => 'קרדיט בנות 2–16',
+    'male13_and_up_credit' => 'קרדיט בנים 13+',
+    'female16_and_up_credit' => 'קרדיט בנות 16+',
+    'ladies_and_female_above_15_credit' => 'קרדיט נשים 15+',
+    'toys_credit' => 'קרדיט צעצועים',
+    'foreign_id' => 'מזהה חיצוני',
+    'import_batch' => 'אצוות ייבוא',
+    'last_form_update' => 'עדכון טופס אחרון',
+    'young_ladies_credit' => 'קרדיט נערות',
+    'blocked' => 'חסום',
+    'blocked_at' => 'תאריך חסימה',
+    'block_reason' => 'סיבת חסימה',
+    'total_balance' => 'יתרה כוללת',
+    'total_paid' => 'סך שולם',
+    'overall_update_status' => 'סטטוס עדכון',
+    'status_name' => 'שם סטטוס',
+    'status_color' => 'צבע סטטוס',
+    'organization_name' => 'שם ארגון',
+    'branch_name' => 'שם סניף',
+    'orders_count' => 'מספר הזמנות',
+    'total_previous_orders' => 'סה״כ הזמנות קודמות',
+    'balance' => 'יתרה'
+];
+
 // ?refresh=1 forces re-fetch from Kavod
 $forceRefresh = isset($_GET['refresh']) && $_GET['refresh'] == '1';
 
@@ -137,15 +203,18 @@ $cleanHeaders = [];
 foreach ($headers as $i => $h) {
     if (!in_array($h, $hiddenColumns)) {
         $keepIndexes[] = $i;
-        $cleanHeaders[] = $h;
+        // Translate column name to Hebrew if translation exists
+        $translatedName = $columnTranslations[$h] ?? $h;
+        $cleanHeaders[] = $translatedName;
     }
 }
 
 $records = [];
 foreach ($data['rows'] as $row) {
     $clean = [];
-    foreach ($keepIndexes as $i) {
-        $clean[$headers[$i]] = $row[$i] ?? null;
+    foreach ($keepIndexes as $idx => $i) {
+        // Use translated header name
+        $clean[$cleanHeaders[$idx]] = $row[$i] ?? null;
     }
     $records[] = $clean;
 }

@@ -1,5 +1,85 @@
 var cashDT = null;
 
+function displayCashData(resp) {
+    if (resp.error) {
+        $('#loadingIndicator').show().html('<div class="text-danger"><b>שגיאה:</b> ' + resp.error + '</div>');
+        return;
+    }
+    
+    var headers = resp.columns || [];
+    // Add "פעולות" column at the end
+    headers.push('פעולות');
+    
+    var headHtml = headers.map(function(h) { 
+        return '<th>' + h + '</th>'; 
+    }).join('');
+    $('#cashTableHead').html(headHtml);
+    
+    var columns = headers.map(function(h, idx) {
+        if (h === 'פעולות') {
+            return {
+                data: null,
+                title: h,
+                orderable: false,
+                render: function(data, type, row) {
+                    var id = row['#'] || row['id'];
+                    return '<button class="btn btn-sm btn-primary edit-btn" data-id="' + id + '" title="עריכה"><i class="bi bi-pencil"></i></button> ' +
+                           '<button class="btn btn-sm btn-danger delete-btn" data-id="' + id + '" title="מחיקה"><i class="bi bi-trash"></i></button>';
+                }
+            };
+        }
+        return { 
+            data: h, 
+            title: h, 
+            defaultContent: '' 
+        };
+    });
+    
+    $('#tableContainer').show();
+    if (cashDT) { 
+        cashDT.destroy(); 
+    }
+    cashDT = $('#cashTable').DataTable({
+        data: resp.data,
+        columns: columns,
+        pageLength: 25,
+        language: {
+            search: 'חיפוש:',
+            lengthMenu: 'הצג _MENU_ רשומות',
+            zeroRecords: 'לא נמצאו רשומות',
+            info: '_START_–_END_ מתוך _TOTAL_',
+            infoEmpty: 'אין רשומות',
+            infoFiltered: '(מסונן מ-_MAX_)',
+            paginate: { 
+                first: 'ראשון', 
+                last: 'אחרון', 
+                next: 'הבא', 
+                previous: 'קודם' 
+            }
+        },
+        dom: 'Bfrtip',
+        buttons: [
+            {
+                extend: 'excel',
+                text: '<i class="bi bi-file-earmark-excel"></i> ייצוא לאקסל',
+                className: 'btn btn-success btn-sm',
+                filename: 'תרומות_מזומן_' + new Date().toISOString().split('T')[0]
+            },
+            {
+                extend: 'colvis',
+                text: '<i class="bi bi-eye"></i> עמודות',
+                className: 'btn btn-secondary btn-sm'
+            },
+            {
+                extend: 'copy',
+                text: '<i class="bi bi-clipboard"></i> העתק',
+                className: 'btn btn-secondary btn-sm'
+            }
+        ],
+        order: [[0, 'desc']]
+    });
+}
+
 function loadCashData(refresh) {
     $('#loadingIndicator').show();
     $('#loadingText').text(refresh ? 'מרענן נתונים מ-ipapp.org... (עד דקה)' : 'טוען נתונים...');
@@ -19,85 +99,7 @@ function loadCashData(refresh) {
         timeout: 90000,
         success: function(resp) {
             $('#loadingIndicator').hide();
-            if (resp.error) {
-                $('#loadingIndicator').show().html('<div class="text-danger"><b>שגיאה:</b> ' + resp.error + '</div>');
-                return;
-            }
-            
-            // Show cache info
-            if (resp.cached_at) {
-                $('#cacheInfo').text('עודכן: ' + resp.cached_at + ' | ' + (resp.count || 0) + ' רשומות');
-            }
-            
-            var headers = resp.columns || [];
-            // Add "פעולות" column at the end
-            headers.push('פעולות');
-            
-            var headHtml = headers.map(function(h) { 
-                return '<th>' + h + '</th>'; 
-            }).join('');
-            $('#cashTableHead').html(headHtml);
-            
-            var columns = headers.map(function(h, idx) {
-                if (h === 'פעולות') {
-                    return {
-                        data: null,
-                        title: h,
-                        orderable: false,
-                        render: function(data, type, row) {
-                            var id = row['#'] || row['id'];
-                            return '<button class="btn btn-sm btn-primary edit-btn" data-id="' + id + '" title="עריכה"><i class="bi bi-pencil"></i></button> ' +
-                                   '<button class="btn btn-sm btn-danger delete-btn" data-id="' + id + '" title="מחיקה"><i class="bi bi-trash"></i></button>';
-                        }
-                    };
-                }
-                return { 
-                    data: h, 
-                    title: h, 
-                    defaultContent: '' 
-                };
-            });
-            
-            $('#tableContainer').show();
-            cashDT = $('#cashTable').DataTable({
-                data: resp.data,
-                columns: columns,
-                pageLength: 25,
-                language: {
-                    search: 'חיפוש:',
-                    lengthMenu: 'הצג _MENU_ רשומות',
-                    zeroRecords: 'לא נמצאו רשומות',
-                    info: '_START_–_END_ מתוך _TOTAL_',
-                    infoEmpty: 'אין רשומות',
-                    infoFiltered: '(מסונן מ-_MAX_)',
-                    paginate: { 
-                        first: 'ראשון', 
-                        last: 'אחרון', 
-                        next: 'הבא', 
-                        previous: 'קודם' 
-                    }
-                },
-                dom: 'Bfrtip',
-                buttons: [
-                    {
-                        extend: 'excel',
-                        text: '<i class="bi bi-file-earmark-excel"></i> ייצוא לאקסל',
-                        className: 'btn btn-success btn-sm',
-                        filename: 'תרומות_מזומן_' + new Date().toISOString().split('T')[0]
-                    },
-                    {
-                        extend: 'colvis',
-                        text: '<i class="bi bi-eye"></i> עמודות',
-                        className: 'btn btn-secondary btn-sm'
-                    },
-                    {
-                        extend: 'copy',
-                        text: '<i class="bi bi-clipboard"></i> העתק',
-                        className: 'btn btn-secondary btn-sm'
-                    }
-                ],
-                order: [[0, 'desc']] // Sort by first column descending (usually date)
-            });
+            displayCashData(resp);
         },
         error: function(xhr) {
             var msg = 'שגיאה בטעינת נתונים מה-API';
@@ -115,10 +117,16 @@ function loadCashData(refresh) {
 }
 
 $(document).ready(function() {
+    // Load initial data from server (no AJAX)
+    if (window.initialCashData && window.initialCashData.count > 0) {
+        displayCashData(window.initialCashData);
+    } else {
+        loadCashData(false);
+    }
+    
     $('#refreshBtn').on('click', function() {
         loadCashData(true);
     });
-    loadCashData(false);
     
     // Add button handler
     $('#addBtn').on('click', function() {

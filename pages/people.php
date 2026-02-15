@@ -66,12 +66,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         $headersHe = [
-            'אמרכל','גזבר','מזהה תוכנה','מס תורם','חתן הר\'ר','משפחה','שם','שם לדואר','שם ומשפחה ביחד',
+            'אמרכל','גזבר','מזהה קופות','מזהה מלבושי כבוד','מס תורם','חתן הר\'ר','משפחה','שם','שם לדואר','שם ומשפחה ביחד',
             'תעודת זהות בעל','תעודת זהות אשה','כתובת','דואר ל','שכונה / אזור','קומה','עיר','טלפון',
             'נייד בעל','שם האשה','נייד אשה','כתובת מייל מעודכן','מייל בעל','מייל אשה','קבלות ל','אלפון','שליחת הודעות','שינוי אחרון'
         ];
         $dbCols = [
-            'amarchal','gizbar','software_id','donor_number','chatan_harar','family_name','first_name','name_for_mail','full_name',
+            'amarchal','gizbar','software_id','phone_id','donor_number','chatan_harar','family_name','first_name','name_for_mail','full_name',
             'husband_id','wife_id','address','mail_to','neighborhood','floor','city','phone',
             'husband_mobile','wife_name','wife_mobile','updated_email','husband_email','wife_email','receipts_to','alphon','send_messages','last_change'
         ];
@@ -376,6 +376,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 'אמרכל' => 'amarchal',
                 'גזבר' => 'gizbar',
                 'מזהה תוכנה' => 'software_id',
+                'מזהה קופות' => 'software_id',
+                'מזהה מלבושי כבוד' => 'phone_id',
                 'מס תורם' => 'donor_number',
                 'חתן הר"ר' => 'chatan_harar',
                 'משפחה' => 'family_name',
@@ -410,13 +412,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             $select = $pdo->prepare("SELECT * FROM people WHERE full_name = ? LIMIT 1");
             $insert = $pdo->prepare("INSERT INTO people (
-                amarchal, gizbar, software_id, donor_number, chatan_harar, family_name, first_name,
+                amarchal, gizbar, software_id, phone_id, donor_number, chatan_harar, family_name, first_name,
                 name_for_mail, full_name, husband_id, wife_id, address, mail_to, neighborhood,
                 floor, city, phone, husband_mobile, wife_name, wife_mobile, updated_email,
                 husband_email, wife_email, receipts_to, alphon, send_messages
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $update = $pdo->prepare("UPDATE people SET
-                amarchal = ?, gizbar = ?, software_id = ?, donor_number = ?, chatan_harar = ?, family_name = ?, first_name = ?,
+                amarchal = ?, gizbar = ?, software_id = ?, phone_id = ?, donor_number = ?, chatan_harar = ?, family_name = ?, first_name = ?,
                 name_for_mail = ?, full_name = ?, husband_id = ?, wife_id = ?, address = ?, mail_to = ?, neighborhood = ?,
                 floor = ?, city = ?, phone = ?, husband_mobile = ?, wife_name = ?, wife_mobile = ?, updated_email = ?,
                 husband_email = ?, wife_email = ?, receipts_to = ?, alphon = ?, send_messages = ?
@@ -465,7 +467,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if ($existing) {
                         // בדוק אם יש שינוי בנתונים
                         $hasChanges = false;
-                        $fieldsToCheck = ['amarchal', 'gizbar', 'software_id', 'donor_number', 'chatan_harar', 'family_name', 'first_name',
+                        $fieldsToCheck = ['amarchal', 'gizbar', 'software_id', 'phone_id', 'donor_number', 'chatan_harar', 'family_name', 'first_name',
                             'name_for_mail', 'full_name', 'husband_id', 'wife_id', 'address', 'mail_to', 'neighborhood',
                             'floor', 'city', 'phone', 'husband_mobile', 'wife_name', 'wife_mobile', 'updated_email',
                             'husband_email', 'wife_email', 'receipts_to', 'alphon', 'send_messages'];
@@ -479,11 +481,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         
                         if ($hasChanges) {
                             $update->execute([
-                                $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
-                                $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
-                                $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
-                                $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
-                                $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
+                                $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['phone_id'] ?? '',
+                                $data['donor_number'] ?? '', $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '',
+                                $data['name_for_mail'] ?? '', $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '',
+                                $data['address'] ?? '', $data['mail_to'] ?? '', $data['neighborhood'] ?? '', $data['floor'] ?? '',
+                                $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '', $data['wife_name'] ?? '',
+                                $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
                                 $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? '',
                                 $existing['id']
                             ]);
@@ -493,11 +496,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         }
                     } else {
                         $insert->execute([
-                            $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['donor_number'] ?? '',
-                            $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '', $data['name_for_mail'] ?? '',
-                            $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '', $data['address'] ?? '', $data['mail_to'] ?? '',
-                            $data['neighborhood'] ?? '', $data['floor'] ?? '', $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '',
-                            $data['wife_name'] ?? '', $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
+                            $data['amarchal'] ?? '', $data['gizbar'] ?? '', $data['software_id'] ?? '', $data['phone_id'] ?? '',
+                            $data['donor_number'] ?? '', $data['chatan_harar'] ?? '', $data['family_name'] ?? '', $data['first_name'] ?? '',
+                            $data['name_for_mail'] ?? '', $data['full_name'] ?? '', $data['husband_id'] ?? '', $data['wife_id'] ?? '',
+                            $data['address'] ?? '', $data['mail_to'] ?? '', $data['neighborhood'] ?? '', $data['floor'] ?? '',
+                            $data['city'] ?? '', $data['phone'] ?? '', $data['husband_mobile'] ?? '', $data['wife_name'] ?? '',
+                            $data['wife_mobile'] ?? '', $data['updated_email'] ?? '', $data['husband_email'] ?? '',
                             $data['wife_email'] ?? '', $data['receipts_to'] ?? '', $data['alphon'] ?? '', $data['send_messages'] ?? ''
                         ]);
                         $added++;
@@ -555,10 +559,10 @@ include '../templates/header.php';
 <?php if (!empty($message)): ?>
 <!-- Summary Message Modal -->
 <div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="messageModalLabel">תוצאת ייבוא</h5>
+                <h5 class="modal-title" id="messageModalLabel"><i class="bi bi-info-circle me-2"></i>תוצאת פעולה</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
             </div>
             <div class="modal-body">
@@ -569,7 +573,7 @@ include '../templates/header.php';
             </div>
         </div>
     </div>
-    </div>
+</div>
 <?php endif; ?>
 <?php
 $allowedTabs = ['full','amarchal','gizbar'];
@@ -603,7 +607,6 @@ foreach ($gizbarMapRows as $row) {
 
 <div class="tab-panel<?php echo ($activeTab==='full')?' active' : ''; ?>" id="full-tab">
     <div id="full">
-        <h2>רשימת אנשים</h2>
         <div class="card fixed-card">
             <div class="card-body">
                 <div class="table-action-bar" id="peopleActionBar">
@@ -622,49 +625,20 @@ foreach ($gizbarMapRows as $row) {
                     <?php endif; ?>
                 </div>
                 <div class="table-scroll">
-                    <table id="peopleTable" class="table table-striped mb-0" style="width:100%">
-                        <colgroup>
-                            <col style="width:40px">
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                            <col>
-                        </colgroup>
-                        <thead class="table-dark">
+                    <div class="table-wrapper">
+                        <table id="peopleTable" class="table table-striped mb-0" style="width:100%">
+                            <thead class="table-dark">
                             <tr>
-                                <th style="width: 28px;" class="text-center select-col">
+                                <th class="text-center select-col">
                                     <?php if ($canEdit): ?>
                                         <input type="checkbox" id="selectAllRows">
                                     <?php else: ?>
                                         &nbsp;
                                     <?php endif; ?>
                                 </th>
-                                <th>#</th>
-                                <th>אמרכל</th>
-                                <th>גזבר</th>
-                                <th>מזהה תוכנה</th>
+                                <th class="text-center">#</th>
+                                <th>מזהה קופות</th>
+                                <th>מזהה מלבושי כבוד</th>
                                 <th>מס תורם</th>
                                 <th>חתן הר''ר</th>
                                 <th>משפחה</th>
@@ -673,23 +647,25 @@ foreach ($gizbarMapRows as $row) {
                                 <th>שם ומשפחה ביחד</th>
                                 <th>תעודת זהות בעל</th>
                                 <th>תעודת זהות אשה</th>
-                                <th>כתובת</th>
-                                <th>דואר ל</th>
-                                <th>שכונה / אזור</th>
-                                <th>קומה</th>
-                                <th>עיר</th>
                                 <th>טלפון</th>
                                 <th>נייד בעל</th>
                                 <th>שם האשה</th>
                                 <th>נייד אשה</th>
+                                <th>כתובת</th>
+                                <th>דואר ל</th>
+                                <th>קומה</th>
+                                <th>שכונה / אזור</th>
+                                <th>עיר</th>
                                 <th>כתובת מייל מעודכן</th>
                                 <th>מייל בעל</th>
                                 <th>מייל אשה</th>
+                                <th>אמרכל</th>
+                                <th>גזבר</th>
                                 <th>קבלות ל</th>
                                 <th>אלפון</th>
                                 <th>שליחת הודעות</th>
                                 <th>שינוי אחרון</th>
-                                <th class="action-col">פעולות</th>
+                                <th class="action-col text-center">פעולות</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -714,9 +690,8 @@ foreach ($gizbarMapRows as $row) {
                                         echo "<td class='text-center select-col'></td>";
                                     }
                                     echo "<td class='text-center'><button class='btn btn-sm btn-info person-details-btn' data-software-id='" . htmlspecialchars($row['software_id'] ?? '') . "' data-person-id='$id' data-name='" . htmlspecialchars(($row['first_name'] ?? '') . ' ' . ($row['family_name'] ?? '')) . "' title='פרטים מלאים'><i class='bi bi-person-circle'></i></button></td>";
-                                    echo "<td class='{$cellClass}' data-field='amarchal'>" . htmlspecialchars($row['amarchal'] ?? '') . "</td>";
-                                    echo "<td class='{$cellClass}' data-field='gizbar'>" . htmlspecialchars($row['gizbar'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='software_id'>" . htmlspecialchars($row['software_id'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='phone_id'>" . htmlspecialchars($row['phone_id'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='donor_number'>" . htmlspecialchars($row['donor_number'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='chatan_harar'>" . htmlspecialchars($row['chatan_harar'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='family_name'>" . htmlspecialchars($row['family_name'] ?? '') . "</td>";
@@ -725,28 +700,27 @@ foreach ($gizbarMapRows as $row) {
                                     echo "<td class='{$cellClass}' data-field='full_name'>" . htmlspecialchars($row['full_name'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='husband_id'>" . htmlspecialchars($row['husband_id'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='wife_id'>" . htmlspecialchars($row['wife_id'] ?? '') . "</td>";
-                                    echo "<td class='{$cellClass}' data-field='address'>" . htmlspecialchars($row['address'] ?? '') . "</td>";
-                                    echo "<td class='{$cellClass}' data-field='mail_to'>" . htmlspecialchars($row['mail_to'] ?? '') . "</td>";
-                                    echo "<td class='{$cellClass}' data-field='neighborhood'>" . htmlspecialchars($row['neighborhood'] ?? '') . "</td>";
-                                    echo "<td class='{$cellClass}' data-field='floor'>" . htmlspecialchars($row['floor'] ?? '') . "</td>";
-                                    echo "<td class='{$cellClass}' data-field='city'>" . htmlspecialchars($row['city'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='phone'>" . htmlspecialchars($row['phone'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='husband_mobile'>" . htmlspecialchars($row['husband_mobile'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='wife_name'>" . htmlspecialchars($row['wife_name'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='wife_mobile'>" . htmlspecialchars($row['wife_mobile'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='address'>" . htmlspecialchars($row['address'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='mail_to'>" . htmlspecialchars($row['mail_to'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='floor'>" . htmlspecialchars($row['floor'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='neighborhood'>" . htmlspecialchars($row['neighborhood'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='city'>" . htmlspecialchars($row['city'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='updated_email'>" . htmlspecialchars($row['updated_email'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='husband_email'>" . htmlspecialchars($row['husband_email'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='wife_email'>" . htmlspecialchars($row['wife_email'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='amarchal'>" . htmlspecialchars($row['amarchal'] ?? '') . "</td>";
+                                    echo "<td class='{$cellClass}' data-field='gizbar'>" . htmlspecialchars($row['gizbar'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='receipts_to'>" . htmlspecialchars($row['receipts_to'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='alphon'>" . htmlspecialchars($row['alphon'] ?? '') . "</td>";
                                     echo "<td class='{$cellClass}' data-field='send_messages'>" . htmlspecialchars($row['send_messages'] ?? '') . "</td>";
                                     echo "<td>" . htmlspecialchars($row['last_change'] ?? '') . "</td>";
                                     echo "<td class='text-center action-cell'>";
                                     if ($canEdit) {
-                                        echo "<div class='row-actions'>";
-                                        echo "<button class='btn btn-sm btn-warning edit-btn me-1' data-id='$id' title='ערוך'><i class='bi bi-pencil'></i></button>";
                                         echo "<button class='btn btn-sm btn-danger delete-btn' data-id='$id' title='מחק'><i class='bi bi-trash'></i></button>";
-                                        echo "</div>";
                                     } else {
                                         echo "<span class='text-muted'>צפייה בלבד</span>";
                                     }
@@ -755,8 +729,10 @@ foreach ($gizbarMapRows as $row) {
                             }
                             ?>
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
+                <div class="table-pagination"></div>
             </div>
         </div>
     </div>
@@ -764,7 +740,6 @@ foreach ($gizbarMapRows as $row) {
 
 <div class="tab-panel<?php echo ($activeTab==='amarchal')?' active' : ''; ?>" id="amarchal-tab">
     <div id="amarchal">
-        <h2>רשימת אמרכלים</h2>
         <div class="card fixed-card">
             <div class="card-body">
                 <div class="table-action-bar" id="amarchalActionBar">
@@ -779,8 +754,9 @@ foreach ($gizbarMapRows as $row) {
                     </form>
                 </div>
                 <div class="table-scroll">
-                    <table id="amarchalTable" class="table table-striped mb-0" style="width:100%">
-                        <thead>
+                    <div class="table-wrapper">
+                        <table id="amarchalTable" class="table table-striped mb-0" style="width:100%">
+                            <thead>
                             <tr>
                                 <th>אמרכל</th>
                                 <th>תעודת זהות בעל</th>
@@ -809,8 +785,10 @@ foreach ($gizbarMapRows as $row) {
                                 echo "<tr><td>{$safeName}</td><td>{$safeId}</td><td>{$safeAddress}</td><td>{$safeNeighborhood}</td><td>{$safeFloor}</td><td>{$safeCity}</td><td>{$safePhone}</td><td>{$safeMobile}</td><td>{$safeEmail}</td></tr>";
                             endforeach; ?>
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
+                <div class="table-pagination"></div>
             </div>
         </div>
     </div>
@@ -818,7 +796,6 @@ foreach ($gizbarMapRows as $row) {
 
 <div class="tab-panel<?php echo ($activeTab==='gizbar')?' active' : ''; ?>" id="gizbar-tab">
     <div id="gizbar">
-        <h2>רשימת גזברים</h2>
         <div class="card fixed-card">
             <div class="card-body">
                 <div class="table-action-bar" id="gizbarActionBar">
@@ -833,8 +810,9 @@ foreach ($gizbarMapRows as $row) {
                     </form>
                 </div>
                 <div class="table-scroll">
-                    <table id="gizbarTable" class="table table-striped mb-0" style="width:100%">
-                        <thead>
+                    <div class="table-wrapper">
+                        <table id="gizbarTable" class="table table-striped mb-0" style="width:100%">
+                            <thead>
                             <tr>
                                 <th>גזבר</th>
                                 <th>תעודת זהות בעל</th>
@@ -865,8 +843,10 @@ foreach ($gizbarMapRows as $row) {
                                 echo "<tr><td>{$safeName}</td><td>{$safeId}</td><td>{$safeAddress}</td><td>{$safeNeighborhood}</td><td>{$safeFloor}</td><td>{$safeCity}</td><td>{$safePhone}</td><td>{$safeMobile}</td><td>{$safeEmail}</td><td>{$safeAmarchal}</td></tr>";
                             endforeach; ?>
                         </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
+                <div class="table-pagination"></div>
             </div>
         </div>
     </div>
@@ -908,9 +888,14 @@ foreach ($gizbarMapRows as $row) {
                             </select>
                         </div>
                         <div class="col-md-4 mb-3">
-                            <label for="software_id" class="form-label">מזהה תוכנה</label>
+                            <label for="software_id" class="form-label">מזהה קופות</label>
                             <input type="text" class="form-control" id="software_id" name="software_id">
                         </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="phone_id" class="form-label">מזהה מלבושי כבוד</label>
+                        <input type="text" class="form-control" id="phone_id" name="phone_id">
                     </div>
                     
                     <div class="row">
@@ -1027,6 +1012,183 @@ foreach ($gizbarMapRows as $row) {
                             <input type="text" class="form-control" id="alphon" name="alphon">
                         </div>
                         <div class="col-md-4 mb-3">
+                            <label for="send_messages" class="form-label">שליחת הודעות</label>
+                            <input type="text" class="form-control" id="send_messages" name="send_messages">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+                <button type="button" class="btn btn-primary" id="savePersonBtn">שמור</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Add Person -->
+<div class="modal fade" id="personModal" tabindex="-1" aria-labelledby="personModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="personModalLabel">הוסף איש קשר חדש</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="personForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="family_name" class="form-label">משפחה <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="family_name" name="family_name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="first_name" class="form-label">שם <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="first_name" name="first_name" required>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="software_id" class="form-label">מזהה קופות</label>
+                            <input type="text" class="form-control" id="software_id" name="software_id">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="phone_id" class="form-label">מזהה מלבושי כבוד</label>
+                            <input type="text" class="form-control" id="phone_id" name="phone_id">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="donor_number" class="form-label">מס תורם</label>
+                            <input type="text" class="form-control" id="donor_number" name="donor_number">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="chatan_harar" class="form-label">חתן הר'ר</label>
+                            <input type="text" class="form-control" id="chatan_harar" name="chatan_harar">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="name_for_mail" class="form-label">שם לדואר</label>
+                            <input type="text" class="form-control" id="name_for_mail" name="name_for_mail">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="full_name" class="form-label">שם ומשפחה ביחד</label>
+                            <input type="text" class="form-control" id="full_name" name="full_name">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="husband_id" class="form-label">תעודת זהות בעל</label>
+                            <input type="text" class="form-control" id="husband_id" name="husband_id">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="wife_id" class="form-label">תעודת זהות אשה</label>
+                            <input type="text" class="form-control" id="wife_id" name="wife_id">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="phone" class="form-label">טלפון</label>
+                            <input type="text" class="form-control" id="phone" name="phone">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="husband_mobile" class="form-label">נייד בעל</label>
+                            <input type="text" class="form-control" id="husband_mobile" name="husband_mobile">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="wife_mobile" class="form-label">נייד אשה</label>
+                            <input type="text" class="form-control" id="wife_mobile" name="wife_mobile">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="wife_name" class="form-label">שם האשה</label>
+                            <input type="text" class="form-control" id="wife_name" name="wife_name">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="address" class="form-label">כתובת</label>
+                            <textarea class="form-control" id="address" name="address" rows="2"></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="mail_to" class="form-label">דואר ל</label>
+                            <input type="text" class="form-control" id="mail_to" name="mail_to">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="floor" class="form-label">קומה</label>
+                            <input type="text" class="form-control" id="floor" name="floor">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="neighborhood" class="form-label">שכונה / אזור</label>
+                            <input type="text" class="form-control" id="neighborhood" name="neighborhood">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="city" class="form-label">עיר</label>
+                            <input type="text" class="form-control" id="city" name="city">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="updated_email" class="form-label">כתובת מייל מעודכן</label>
+                            <input type="email" class="form-control" id="updated_email" name="updated_email">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="husband_email" class="form-label">מייל בעל</label>
+                            <input type="email" class="form-control" id="husband_email" name="husband_email">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="wife_email" class="form-label">מייל אשה</label>
+                            <input type="email" class="form-control" id="wife_email" name="wife_email">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="amarchal" class="form-label">אמרכל</label>
+                            <select class="form-select" id="amarchal" name="amarchal">
+                                <option value="">בחר...</option>
+                                <?php foreach ($amarchalim as $name): ?>
+                                    <option value="<?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="gizbar" class="form-label">גזבר</label>
+                            <select class="form-select" id="gizbar" name="gizbar">
+                                <option value="">בחר...</option>
+                                <?php foreach ($gizbarim as $name): ?>
+                                    <option value="<?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>">
+                                        <?php echo htmlspecialchars($name, ENT_QUOTES, 'UTF-8'); ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="receipts_to" class="form-label">קבלות ל</label>
+                            <input type="text" class="form-control" id="receipts_to" name="receipts_to">
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="alphon" class="form-label">אלפון</label>
+                            <input type="text" class="form-control" id="alphon" name="alphon">
+                        </div>
+                        <div class="col-md-6 mb-3">
                             <label for="send_messages" class="form-label">שליחת הודעות</label>
                             <input type="text" class="form-control" id="send_messages" name="send_messages">
                         </div>

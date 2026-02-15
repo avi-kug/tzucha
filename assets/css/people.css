@@ -1,9 +1,113 @@
+/* Hide table body during initialization to prevent column visibility flicker, keep header visible */
+#peopleTable:not(.dt-initialized) tbody,
+#amarchalTable:not(.dt-initialized) tbody,
+#gizbarTable:not(.dt-initialized) tbody {
+    visibility: hidden !important;
+}
+
+#peopleTable.dt-initialized tbody,
+#amarchalTable.dt-initialized tbody,
+#gizbarTable.dt-initialized tbody {
+    visibility: visible !important;
+}
+
+/* Keep headers always visible - CRITICAL */
+#peopleTable thead,
+#amarchalTable thead,
+#gizbarTable thead {
+    visibility: visible !important;
+    display: table-header-group !important;
+    opacity: 1 !important;
+}
+
+#peopleTable thead tr,
+#amarchalTable thead tr,
+#gizbarTable thead tr {
+    visibility: visible !important;
+    display: table-row !important;
+    opacity: 1 !important;
+}
+
+#peopleTable thead th,
+#amarchalTable thead th,
+#gizbarTable thead th {
+    visibility: visible !important;
+    display: table-cell !important;
+    opacity: 1 !important;
+}
+
+/* Ensure DataTables doesn't hide the table */
+.dataTables_wrapper table {
+    visibility: visible !important;
+}
+
+.dataTables_wrapper thead {
+    visibility: visible !important;
+    display: table-header-group !important;
+}
+
+/* Force thead to show */
+table.dataTable thead {
+    visibility: visible !important;
+    display: table-header-group !important;
+}
+
+table.dataTable thead tr {
+    visibility: visible !important;
+    display: table-row !important;
+}
+
+table.dataTable thead th {
+    visibility: visible !important;
+    display: table-cell !important;
+}
+
 .editable { cursor: pointer; background-color: transparent; transition: background-color 0.2s; }
 .editable:hover { background-color: #fff3cd !important; }
 .editing { background-color: #d1ecf1 !important; }
-.select-col { width: 44px !important; min-width: 44px !important; max-width: 44px !important; padding: 0 !important; }
+
+/* Table row height */
+#peopleTable tbody tr,
+#amarchalTable tbody tr,
+#gizbarTable tbody tr {
+    height: 33px !important;
+}
+
+#peopleTable tbody td,
+#amarchalTable tbody td,
+#gizbarTable tbody td {
+    padding: 4px 8px !important;
+    vertical-align: middle !important;
+}
+
+#peopleTable thead th,
+#amarchalTable thead th,
+#gizbarTable thead th {
+    padding: 8px !important;
+    vertical-align: middle !important;
+}
+
+.select-col { width: 28px !important; min-width: 28px !important; max-width: 28px !important; padding: 4px !important; text-align: center !important; }
 .select-col input[type="checkbox"] { width: 14px; height: 14px; margin: 0 auto; display: block; }
-#peopleTable th.select-col, #peopleTable td.select-col { width: 44px !important; min-width: 44px !important; max-width: 44px !important; text-align: center; vertical-align: middle; }
+#peopleTable th.select-col, #peopleTable td.select-col { width: 28px !important; min-width: 28px !important; max-width: 28px !important; text-align: center; vertical-align: middle; }
+
+/* Details button column - fixed width */
+#peopleTable th:nth-child(2),
+#peopleTable td:nth-child(2) {
+    width: 45px !important;
+    min-width: 45px !important;
+    max-width: 45px !important;
+    text-align: center !important;
+    padding: 4px !important;
+}
+
+/* Actions column - fixed width */
+#peopleTable th:last-child,
+#peopleTable td:last-child {
+    width: 100px !important;
+    min-width: 100px !important;
+    max-width: 100px !important;
+}
 .duplicate-name, .duplicate-name td { background-color: #f8d7da !important; }
 .dataTables_wrapper .dt-buttons { float: left; }
 #peopleTable, #amarchalTable, #gizbarTable { table-layout: auto; }
@@ -32,13 +136,19 @@
 
 /* Tabs */
 .tabs-nav {
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    background: #fff;
     display: flex !important;
     direction: rtl !important;
     justify-content: flex-end !important;
     flex-direction: row-reverse !important;
     border-bottom: 2px solid #ddd;
-    margin-bottom: 20px;
+    margin-bottom: 0;
     gap: 5px;
+    padding: 5px 20px 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .tabs-nav .tab-btn {
@@ -70,13 +180,266 @@
 
 .tab-panel {
     display: none !important;
-    padding: 24px 0 0 0;
+    padding: 0;
+    margin: 0;
     background: #fff;
     animation: fadeIn 0.3s;
+    height: 100%;
 }
 
 .tab-panel.active {
     display: block !important;
+}
+
+/* Remove margins from tab content divs */
+.tab-panel > div {
+    margin: 0;
+    padding: 0;
+}
+
+.tab-panel .card {
+    margin: 0;
+}
+
+/* Action bar sticky */
+.table-action-bar {
+    position: sticky;
+    top: 45px;
+    z-index: 999;
+    background: #fff;
+    padding: 0 20px 3px 20px;
+    margin: 0;
+    border-bottom: 1px solid #dee2e6;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    overflow: visible;
+}
+
+/* DataTables controls in action bar */
+.table-action-bar .row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 15px;
+    margin: 0;
+    width: 100%;
+}
+
+.table-action-bar .row .col-md-6 {
+    flex: 0 0 auto;
+    width: auto;
+    padding: 0;
+}
+
+.table-action-bar #peopleTable_length,
+.table-action-bar #amarchalTable_length,
+.table-action-bar #gizbarTable_length {
+    display: inline-block;
+    margin: 0;
+    order: 1;
+}
+
+.table-action-bar #peopleTable_filter,
+.table-action-bar #amarchalTable_filter,
+.table-action-bar #gizbarTable_filter {
+    display: inline-block;
+    margin: 0;
+    margin-right: auto;
+    order: 2;
+}
+
+.table-action-bar .btn,
+.table-action-bar form,
+.table-action-bar .dt-buttons {
+    order: 0;
+}
+
+.table-action-bar .row {
+    order: 10;
+    flex-basis: 100%;
+}
+
+.table-action-bar .dataTables_length label,
+.table-action-bar .dataTables_filter label {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.table-action-bar .dataTables_length select {
+    margin: 0 5px;
+}
+
+.table-action-bar .dataTables_filter input {
+    margin-right: 5px;
+}
+
+/* Fixed card with proper scrolling */
+.fixed-card {
+    margin: 0;
+    height: calc(100vh - 120px);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(0,0,0,.125);
+    border-radius: 0.25rem;
+    overflow: hidden;
+}
+
+.fixed-card .card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+}
+
+/* Table scroll container */
+.table-scroll {
+    flex: 1;
+    overflow: auto;
+    margin: 0;
+    padding: 0;
+    position: relative;
+}
+
+/* Table wrapper inside scroll */
+.table-scroll .table-wrapper {
+    padding: 0 15px 30px 15px;
+}
+
+/* Add spacer for action bar to prevent header overlap */
+.table-scroll::before {
+    content: '';
+    display: block;
+    height: 50px;
+}
+
+/* Table headers - NOT sticky, will scroll with content */
+.table-scroll table thead {
+    background: #212529 !important;
+    visibility: visible !important;
+    display: table-header-group !important;
+}
+
+.table-scroll table thead th {
+    background: #212529 !important;
+    color: #fff !important;
+    visibility: visible !important;
+    display: table-cell !important;
+}
+
+/* Ensure smooth scrolling */
+.table-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.table-scroll::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.table-scroll::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 5px;
+}
+
+.table-scroll::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Ensure table doesn't shrink columns */
+.table-scroll table {
+    min-width: max-content;
+}
+
+/* DataTables wrapper adjustments */
+.table-scroll .dataTables_wrapper {
+    width: 100%;
+    overflow: visible;
+}
+
+/* Pagination area at bottom - outside scroll */
+.table-pagination {
+    background: #fff;
+    padding: 10px 15px;
+    border-top: 1px solid #dee2e6;
+    margin: 0;
+}
+
+/* Better spacing for action bar buttons */
+.table-action-bar .btn {
+    margin-left: 5px;
+}
+
+.table-action-bar form {
+    display: inline-block;
+}
+
+/* DataTables buttons in action bar */
+.table-action-bar .dt-buttons {
+    display: inline-block;
+    margin: 0 5px;
+    position: relative;
+    overflow: visible;
+}
+
+.table-action-bar .dt-button {
+    margin: 0 2px !important;
+    position: relative;
+}
+
+/* Column visibility dropdown */
+.dt-button-collection {
+    z-index: 10000 !important;
+    max-height: 400px !important;
+    overflow-y: auto !important;
+    position: absolute !important;
+}
+
+/* Background overlay for column visibility */
+div.dt-button-background {
+    z-index: 9999 !important;
+}
+
+/* DataTables buttons in action bar */
+.dt-buttons {
+    display: inline-block !important;
+    margin-left: 5px;
+    overflow: visible !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .tabs-nav {
+        padding: 3px 10px 0;
+    }
+    
+    .table-action-bar {
+        padding: 0 10px 3px 10px;
+        top: 42px;
+    }
+    
+    .fixed-card {
+        height: calc(100vh - 120px);
+    }
+    
+    .table-scroll::before {
+        height: 45px;
+    }
+}
+
+/* Fade in animation */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
 }
 
 @keyframes fadeIn {
