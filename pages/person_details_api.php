@@ -5,7 +5,22 @@
  */
 
 header('Content-Type: application/json; charset=utf-8');
+
+// Authentication & Authorization
+require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/db.php';
+
+if (!auth_is_logged_in()) {
+    http_response_code(401);
+    echo json_encode(['error' => 'לא מחובר'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (!auth_has_permission('people')) {
+    http_response_code(403);
+    echo json_encode(['error' => 'אין הרשאה'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 $software_id = $_GET['software_id'] ?? null;
 $person_id = $_GET['person_id'] ?? null;

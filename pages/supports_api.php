@@ -1,5 +1,5 @@
 <?php
-header('Content-Type: application/json; charset=utf-8');
+// Don't set JSON header yet - export_excel needs different headers
 require_once '../config/db.php';
 require_once '../config/auth.php';
 require_once '../repositories/SupportsRepository.php';
@@ -15,7 +15,161 @@ $peopleRepo = new PeopleRepository($pdo);
 // Get the action
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
 
-$mutatingActions = ['add', 'update', 'delete', 'delete_bulk', 'import_excel', 'link_person'];
+// Handle export_excel BEFORE try-catch to avoid JSON header conflicts
+if ($action === 'export_excel') {
+    require_once '../vendor/autoload.php';
+    
+    $tab = $_GET['tab'] ?? 'data';
+    
+    // Force proper headers BEFORE any output
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    
+    // Create new Spreadsheet
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    
+    $filename = 'export_' . date('Y-m-d') . '.xlsx'; // Default filename
+    
+    if ($tab === 'approved') {
+        // Export approved supports table
+        $sheet->setTitle('תמיכות שאושרו');
+        
+        // Set headers
+        $headers = ['מס\' תורם', 'שם', 'משפחה', 'סכום', 'חודש תמיכה', 'תאריך אישור'];
+        $sheet->fromArray($headers, null, 'A1');
+        
+        // Get data
+        $stmt = $pdo->prepare("
+            SELECT 
+                donor_number,
+                first_name,
+                last_name,
+                amount,
+                support_month,
+                approved_at
+            FROM approved_supports
+            ORDER BY support_month DESC, created_at DESC
+        ");
+        $stmt->execute();
+        $data = $stmt->fetchAll(PDO::FETCH_NUM);
+        
+        // Add data to sheet
+        $sheet->fromArray($data, null, 'A2');
+        
+        $filename = 'תמיכות_שאושרו_' . date('Y-m-d') . '.xlsx';
+        
+    } elseif ($tab === 'summary') {
+        // Export summary table with calculations
+        $sheet->setTitle('תמיכה');
+        
+        $headers = ['שם', 'משפחה', 'מס\' תורם', 'כתובת', 'עיר', 'סה"כ הכנסות', 'סה"כ הוצאות', 
+                    'כולל חריגה?', 'הכנסה לנפש', 'סכום תמיכה', 'חודש תמיכה'];
+        $sheet->fromArray($headers, null, 'A1');
+        
+        $supports = $supportsRepo->getAllWithCalculations(true);
+        $data = [];
+        foreach ($supports as $support) {
+            $data[] = [
+                $support['first_name'] ?? '',
+                $support['last_name'] ?? '',
+                $support['donor_number'] ?? '',
+                $support['street'] ?? '',
+                $support['city'] ?? '',
+                $support['total_income'] ?? 0,
+                $support['total_expenses'] ?? 0,
+                $support['include_exceptional_in_calc'] == 1 ? 'כן' : 'לא',
+                $support['income_per_person'] ?? 0,
+                $support['support_amount'] ?? 0,
+                $support['support_month'] ?? ''
+            ];
+        }
+        
+        $sheet->fromArray($data, null, 'A2');
+        
+        $filename = 'תמיכות_סיכום_' . date('Y-m-d') . '.xlsx';
+        
+    } else {
+        // Export raw data table
+        $sheet->setTitle('נתונים');
+        
+        $headers = ['מזהה', 'תאריך יצירה', 'תאריך עדכון', 'שם עמדה', 'שם פרטי', 'שם משפחה',
+                   'מספר זהות', 'עיר', 'רחוב', 'מס\' טל\'', 'מס\' נפשות בבית', 'מס\' ילדים נשואים',
+                   'מקום לימודים/עבודה 1', 'סכום הכנסה/מלגה 1', 'מקום לימודים/עבודה 2', 'סכום הכנסה/מלגה 2',
+                   'קצבת ילדים', 'קצבת שארים', 'קצבת נכות', 'הבטחת הכנסה', 'השלמת הכנסה', 'סיוע בשכר דירה',
+                   'מקור הקצבה אחר', 'סכום', 'הוצאות דיור', 'הוצאות שכר לימוד', 'הוצאה חריגה קבועה',
+                   'פירוט הוצאה חריגה', 'סיבת הקושי', 'הערות', 'שם בעל החשבון', 'בנק', 'סניף',
+                   'מס\' חשבון', 'שם מבקש התמיכה', 'מספר עסקה'];
+        $sheet->fromArray($headers, null, 'A1');
+        
+        $supports = $supportsRepo->getAll();
+        $data = [];
+        foreach ($supports as $support) {
+            $data[] = [
+                $support['id'] ?? '',
+                $support['created_at'] ?? '',
+                $support['updated_at'] ?? '',
+                $support['position_name'] ?? '',
+                $support['first_name'] ?? '',
+                $support['last_name'] ?? '',
+                $support['id_number'] ?? '',
+                $support['city'] ?? '',
+                $support['street'] ?? '',
+                $support['phone'] ?? '',
+                $support['household_members'] ?? 0,
+                $support['married_children'] ?? 0,
+                $support['study_work_place_1'] ?? '',
+                $support['income_scholarship_1'] ?? 0,
+                $support['study_work_place_2'] ?? '',
+                $support['income_scholarship_2'] ?? 0,
+                $support['child_allowance'] ?? 0,
+                $support['survivor_allowance'] ?? 0,
+                $support['disability_allowance'] ?? 0,
+                $support['income_guarantee'] ?? 0,
+                $support['income_supplement'] ?? 0,
+                $support['rent_assistance'] ?? 0,
+                $support['other_allowance_source'] ?? '',
+                $support['other_allowance_amount'] ?? 0,
+                $support['housing_expenses'] ?? 0,
+                $support['tuition_expenses'] ?? 0,
+                $support['recurring_exceptional_expense'] ?? 0,
+                $support['exceptional_expense_details'] ?? '',
+                $support['difficulty_reason'] ?? '',
+                $support['notes'] ?? '',
+                $support['account_holder_name'] ?? '',
+                $support['bank_name'] ?? '',
+                $support['branch_number'] ?? '',
+                $support['account_number'] ?? '',
+                $support['support_requester_name'] ?? '',
+                $support['transaction_number'] ?? ''
+            ];
+        }
+        
+        $sheet->fromArray($data, null, 'A2');
+        
+        $filename = 'תמיכות_נתונים_' . date('Y-m-d') . '.xlsx';
+    }
+    
+    // Set RTL direction
+    $sheet->setRightToLeft(true);
+    
+    // Auto-size columns
+    foreach (range('A', $sheet->getHighestColumn()) as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    
+    // Output headers and file
+    header('Content-Disposition: attachment;filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+// Set JSON header for non-export actions
+header('Content-Type: application/json; charset=utf-8');
+
+$mutatingActions = ['add', 'update', 'delete', 'delete_bulk', 'import_excel', 'link_person', 'approve_support', 'delete_approved_support'];
 if (in_array($action, $mutatingActions, true) && auth_role() === 'viewer') {
     http_response_code(403);
     echo json_encode(['success' => false, 'error' => 'אין הרשאה לפעולה זו.']);
@@ -96,7 +250,9 @@ try {
                 'account_number' => $_POST['account_number'] ?? '',
                 'support_requester_name' => $_POST['support_requester_name'] ?? '',
                 'transaction_number' => $_POST['transaction_number'] ?? '',
-                'include_exceptional_in_calc' => isset($_POST['include_exceptional_in_calc']) ? 1 : 0
+                'include_exceptional_in_calc' => isset($_POST['include_exceptional_in_calc']) ? 1 : 0,
+                'support_amount' => $_POST['support_amount'] ?? 0,
+                'support_month' => $_POST['support_month'] ?? ''
             ];
             
             $newId = $supportsRepo->create($data);
@@ -145,7 +301,9 @@ try {
                 'account_number' => $_POST['account_number'] ?? '',
                 'support_requester_name' => $_POST['support_requester_name'] ?? '',
                 'transaction_number' => $_POST['transaction_number'] ?? '',
-                'include_exceptional_in_calc' => isset($_POST['include_exceptional_in_calc']) ? 1 : 0
+                'include_exceptional_in_calc' => isset($_POST['include_exceptional_in_calc']) ? 1 : 0,
+                'support_amount' => $_POST['support_amount'] ?? 0,
+                'support_month' => $_POST['support_month'] ?? ''
             ];
             
             $supportsRepo->update($id, $data);
@@ -684,6 +842,95 @@ try {
             
             $writer->save('php://output');
             exit;
+        
+        case 'approve_support':
+            // Approve support and add to approved_supports table
+            $supportId = $_POST['support_id'] ?? 0;
+            $amount = $_POST['amount'] ?? 0;
+            $supportMonth = $_POST['support_month'] ?? '';
+            
+            if (!$supportId || !$supportMonth) {
+                throw new Exception('Missing required parameters');
+            }
+            
+            // Get support details
+            $support = $supportsRepo->getById($supportId);
+            if (!$support) {
+                throw new Exception('Support record not found');
+            }
+            
+            // If amount is 0 or empty, calculate it
+            if (!$amount || floatval($amount) <= 0) {
+                $includeExceptional = isset($support['include_exceptional_in_calc']) 
+                    ? (bool)$support['include_exceptional_in_calc'] 
+                    : true;
+                $calculations = $supportsRepo->calculateSupport($support, $includeExceptional);
+                $amount = $calculations['support_amount'] ?? 0;
+                
+                // If still 0, throw error
+                if (floatval($amount) <= 0) {
+                    throw new Exception('לא ניתן לחשב סכום תמיכה. נא למלא את השדה ידנית.');
+                }
+            }
+            
+            // Get approved_by user ID - validate it exists in users table
+            $approvedBy = null;
+            if (isset($_SESSION['user_id'])) {
+                $checkUser = $pdo->prepare("SELECT id FROM users WHERE id = ?");
+                $checkUser->execute([$_SESSION['user_id']]);
+                if ($checkUser->fetch()) {
+                    $approvedBy = $_SESSION['user_id'];
+                }
+            }
+            
+            // Insert into approved_supports
+            $stmt = $pdo->prepare("
+                INSERT INTO approved_supports 
+                (support_id, donor_number, first_name, last_name, amount, support_month, approved_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ");
+            
+            $stmt->execute([
+                $supportId,
+                $support['donor_number'] ?? '',
+                $support['first_name'] ?? '',
+                $support['last_name'] ?? '',
+                $amount,
+                $supportMonth,
+                $approvedBy
+            ]);
+            
+            echo json_encode(['success' => true, 'message' => 'התמיכה אושרה בהצלחה']);
+            break;
+        
+        case 'get_approved_supports':
+            // Get all approved supports
+            $stmt = $pdo->prepare("
+                SELECT 
+                    a.*,
+                    u.username as approved_by_name
+                FROM approved_supports a
+                LEFT JOIN users u ON a.approved_by = u.id
+                ORDER BY a.support_month DESC, a.created_at DESC
+            ");
+            $stmt->execute();
+            $approvedSupports = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode(['success' => true, 'data' => $approvedSupports]);
+            break;
+        
+        case 'delete_approved_support':
+            // Delete an approved support record
+            $id = $_POST['id'] ?? 0;
+            if (!$id) {
+                throw new Exception('Missing ID');
+            }
+            
+            $stmt = $pdo->prepare("DELETE FROM approved_supports WHERE id = ?");
+            $stmt->execute([$id]);
+            
+            echo json_encode(['success' => true, 'message' => 'נמחק בהצלחה']);
+            break;
         
         default:
             throw new Exception('Invalid action');

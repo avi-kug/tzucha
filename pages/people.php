@@ -606,6 +606,18 @@ foreach ($gizbarMapRows as $row) {
 </div>
 
 <div class="tab-panel<?php echo ($activeTab==='full')?' active' : ''; ?>" id="full-tab">
+    <!-- Table Loader -->
+    <div class="table-loader" id="fullTableLoader">
+        <div class="loader-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">טוען...</span>
+            </div>
+            <p class="mt-3">טוען נתונים...</p>
+        </div>
+    </div>
+    
+    <!-- Table Content - hidden during load -->
+    <div class="table-content-hidden" id="fullTableContent">
     <div id="full">
         <div class="card fixed-card">
             <div class="card-body">
@@ -736,9 +748,22 @@ foreach ($gizbarMapRows as $row) {
             </div>
         </div>
     </div>
+    </div><!-- End fullTableContent -->
 </div>
 
 <div class="tab-panel<?php echo ($activeTab==='amarchal')?' active' : ''; ?>" id="amarchal-tab">
+    <!-- Table Loader -->
+    <div class="table-loader" id="amarchalTableLoader">
+        <div class="loader-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">טוען...</span>
+            </div>
+            <p class="mt-3">טוען נתונים...</p>
+        </div>
+    </div>
+    
+    <!-- Table Content - hidden during load -->
+    <div class="table-content-hidden" id="amarchalTableContent">
     <div id="amarchal">
         <div class="card fixed-card">
             <div class="card-body">
@@ -792,9 +817,22 @@ foreach ($gizbarMapRows as $row) {
             </div>
         </div>
     </div>
+    </div><!-- End amarchalTableContent -->
 </div>
 
 <div class="tab-panel<?php echo ($activeTab==='gizbar')?' active' : ''; ?>" id="gizbar-tab">
+    <!-- Table Loader -->
+    <div class="table-loader" id="gizbarTableLoader">
+        <div class="loader-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">טוען...</span>
+            </div>
+            <p class="mt-3">טוען נתונים...</p>
+        </div>
+    </div>
+    
+    <!-- Table Content - hidden during load -->
+    <div class="table-content-hidden" id="gizbarTableContent">
     <div id="gizbar">
         <div class="card fixed-card">
             <div class="card-body">
@@ -850,6 +888,7 @@ foreach ($gizbarMapRows as $row) {
             </div>
         </div>
     </div>
+    </div><!-- End gizbarTableContent -->
 </div>
 
 <!-- Modal for Add/Edit Person -->
@@ -1451,5 +1490,6 @@ foreach ($gizbarMapRows as $row) {
 </div>
 
 <?php include '../templates/person_details_modal.php'; ?>
+
 <?php include '../templates/footer.php'; ?>
 <script src="../assets/js/people.js"></script>

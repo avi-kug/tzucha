@@ -6,6 +6,32 @@
     const canEdit = dataEl ? dataEl.dataset.canEdit === '1' : false;
     const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
 
+    // Function to hide table loader and show content for specific tab
+    function hideTableLoader(tabName) {
+        const loader = document.getElementById(tabName + 'TableLoader');
+        const content = document.getElementById(tabName + 'TableContent');
+        
+        if (loader && content) {
+            loader.classList.add('fade-out');
+            content.classList.remove('table-content-hidden');
+            content.classList.add('table-content-visible');
+            
+            // Remove loader from DOM after animation
+            setTimeout(() => {
+                if (loader.parentNode) {
+                    loader.parentNode.removeChild(loader);
+                }
+            }, 300);
+        }
+    }
+
+    // Failsafe: Always hide loaders after maximum 3 seconds
+    setTimeout(function() {
+        hideTableLoader('full');
+        hideTableLoader('amarchal');
+        hideTableLoader('gizbar');
+    }, 3000);
+
     // Initialize Tabs
     function initializeTabs() {
         const tabButtons = document.querySelectorAll('.tab-btn');
@@ -150,6 +176,9 @@
                 if (paginationRow.length && paginationContainer.length) {
                     paginationRow.appendTo(paginationContainer);
                 }
+                
+                // Hide table loader and show content
+                hideTableLoader('full');
             }
         });
 
@@ -444,6 +473,9 @@
                     if (paginationRow.length && paginationContainer.length) {
                         paginationRow.appendTo(paginationContainer);
                     }
+                    
+                    // Hide table loader and show content
+                    hideTableLoader('amarchal');
                 }
             });
             applyColumnResize('#amarchalTable', amarchalTable);
@@ -507,6 +539,9 @@
                     if (paginationRow.length && paginationContainer.length) {
                         paginationRow.appendTo(paginationContainer);
                     }
+                    
+                    // Hide table loader and show content
+                    hideTableLoader('gizbar');
                 }
             });
             applyColumnResize('#gizbarTable', gizbarTable);

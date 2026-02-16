@@ -1,5 +1,12 @@
 <?php
 session_start();
+require_once '../config/auth.php';
+
+// Log logout before destroying session
+if (!empty($_SESSION['username'])) {
+    security_log('LOGOUT', ['username' => $_SESSION['username']]);
+}
+
 $_SESSION = [];
 if (ini_get('session.use_cookies')) {
     $params = session_get_cookie_params();

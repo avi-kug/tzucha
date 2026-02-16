@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
     loadPeopleList();
     // בדוק hash ב-URL, אם אין - ברירת מחדל summary
     const hash = window.location.hash.replace('#', '');
-    const initialTab = (hash === 'data' || hash === 'summary') ? hash : 'summary';
+    const initialTab = (hash === 'data' || hash === 'summary' || hash === 'approved') ? hash : 'summary';
     switchTab(initialTab);
     loadSupportsData();
 });
@@ -32,7 +32,7 @@ function initializeTabs() {
     // Listen for browser back/forward navigation
     window.addEventListener('hashchange', function() {
         const hash = window.location.hash.replace('#', '');
-        if ((hash === 'data' || hash === 'summary') && hash !== currentTab) {
+        if ((hash === 'data' || hash === 'summary' || hash === 'approved') && hash !== currentTab) {
             switchTab(hash);
         }
     });
@@ -58,6 +58,7 @@ function switchTab(tabName) {
     activeTab.classList.add('active');
     
     currentTab = tabName;
+    console.log('Switched to tab:', currentTab);
     loadSupportsData();
 }
 
@@ -114,6 +115,11 @@ function initializeEventListeners() {
     // Load Person Data Button
     document.getElementById('loadPersonDataBtn').addEventListener('click', function() {
         loadPersonDataToForm();
+    });
+    
+    // Approve Selected Button
+    document.getElementById('approveSelectedBtn').addEventListener('click', function() {
+        approveSelectedSupports();
     });
 }
 
@@ -173,9 +179,14 @@ function loadPersonDataToForm() {
 // Load Supports Data
 async function loadSupportsData() {
     try {
-        const url = currentTab === 'summary' 
-            ? 'supports_api.php?action=get_all'
-            : 'supports_api.php?action=get_raw_data';
+        let url;
+        if (currentTab === 'approved') {
+            url = 'supports_api.php?action=get_approved_supports';
+        } else if (currentTab === 'summary') {
+            url = 'supports_api.php?action=get_all';
+        } else {
+            url = 'supports_api.php?action=get_raw_data';
+        }
         
         const response = await fetch(url, {
             headers: {
@@ -185,12 +196,15 @@ async function loadSupportsData() {
         const result = await response.json();
         
         if (result.success) {
-            supportsData = result.data;
-            
-            if (currentTab === 'summary') {
-                renderSummaryTable(supportsData);
+            if (currentTab === 'approved') {
+                renderApprovedTable(result.data);
             } else {
-                renderDataTable(supportsData);
+                supportsData = result.data;
+                if (currentTab === 'summary') {
+                    renderSummaryTable(supportsData);
+                } else {
+                    renderDataTable(supportsData);
+                }
             }
         } else {
             showAlert('error', result.error || 'שגיאה בטעינת הנתונים');
@@ -230,9 +244,14 @@ function renderSummaryTable(data) {
             <td style="text-align: center;">${support.include_exceptional_in_calc == 1 ? '✓' : '✗'}</td>
             <td>${formatCurrency(support.income_per_person)}</td>
             <td><strong>${formatCurrency(support.support_amount)}</strong></td>
+            <td>${formatMonth(support.support_month)}</td>
             <td>
+                <input type="checkbox" class="support-checkbox" data-id="${support.id}" data-amount="${support.support_amount || 0}" data-month="${support.support_month || ''}" data-first-name="${support.first_name || ''}" data-last-name="${support.last_name || ''}">
                 <button class="btn btn-sm btn-primary edit-support-btn" data-id="${support.id}">
                     <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-success approve-support-btn" data-id="${support.id}" data-amount="${support.support_amount || 0}" data-month="${support.support_month || ''}" data-first-name="${support.first_name || ''}" data-last-name="${support.last_name || ''}">
+                    <i class="bi bi-check-circle"></i> אשר
                 </button>
                 <button class="btn btn-sm btn-danger delete-support-btn" data-id="${support.id}">
                     <i class="bi bi-trash"></i>
@@ -255,6 +274,24 @@ function renderSummaryTable(data) {
         btn.addEventListener('click', async function() {
             const id = this.dataset.id;
             await deleteSupport(id);
+        });
+    });
+    
+    tbody.querySelectorAll('.approve-support-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const id = this.dataset.id;
+            const amount = this.dataset.amount;
+            const month = this.dataset.month;
+            const firstName = this.dataset.firstName;
+            const lastName = this.dataset.lastName;
+            await approveSupport(id, amount, month, firstName, lastName);
+        });
+    });
+    
+    // Add event listeners to checkboxes
+    tbody.querySelectorAll('.support-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateApproveSelectedButton();
         });
     });
     
@@ -355,12 +392,18 @@ function openSupportModal(supportId = null) {
         modalAlert.className = '';
     }
     
+    // Always set current month as default
+    const now = new Date();
+    const currentMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+    document.getElementById('supportMonth').value = currentMonth;
+    
     if (supportId) {
         modalTitle.textContent = 'עריכת תמיכה';
         loadSupportToForm(supportId);
     } else {
         modalTitle.textContent = 'הוספת תמיכה';
         document.getElementById('supportId').value = '';
+        document.getElementById('supportAmount').value = '0';
     }
     
     modal.style.display = 'block';
@@ -416,6 +459,13 @@ async function loadSupportToForm(supportId) {
             document.getElementById('supportRequesterName').value = support.support_requester_name || '';
             document.getElementById('transactionNumber').value = support.transaction_number || '';
             document.getElementById('includeExceptionalInCalc').checked = support.include_exceptional_in_calc == 1;
+            document.getElementById('supportAmount').value = support.support_amount || 0;
+            
+            // Set support month - only override current month if there's a saved value
+            if (support.support_month && support.support_month.trim() !== '') {
+                document.getElementById('supportMonth').value = support.support_month;
+            }
+            // Otherwise keep the current month that was already set in openSupportModal
         }
     } catch (error) {
         console.error('Error loading support:', error);
@@ -451,11 +501,15 @@ async function saveSupportForm() {
         const result = await response.json();
         
         if (result.success) {
+            showAlert('success', result.message || 'נשמר בהצלחה');
             closeModals();
             loadSupportsData();
+        } else {
+            showAlert('error', result.error || 'שגיאה בשמירה');
         }
     } catch (error) {
         console.error('Error saving support:', error);
+        showAlert('error', 'שגיאה בשמירה');
     }
 }
 
@@ -594,8 +648,21 @@ function showImportResultsModal(result) {
 
 // Export to Excel
 function exportToExcel() {
-    const tab = currentTab === 'summary' ? 'summary' : 'data';
-    window.location.href = `supports_api.php?action=export_excel&tab=${tab}`;
+    // Get the currently active tab from the DOM instead of relying on the variable
+    const activeTabBtn = document.querySelector('.tab-btn.active');
+    const tab = activeTabBtn ? activeTabBtn.dataset.tab : 'data';
+    
+    // Add timestamp to prevent caching
+    const timestamp = new Date().getTime();
+    const url = `supports_api.php?action=export_excel&tab=${tab}&t=${timestamp}`;
+    
+    console.log('Active tab button:', activeTabBtn);
+    console.log('Active tab dataset:', activeTabBtn ? activeTabBtn.dataset : 'null');
+    console.log('Exporting tab:', tab, '(currentTab variable:', currentTab, ')');
+    console.log('Export URL:', url);
+    
+    // Open in new window/tab to see any errors
+    window.open(url, '_blank');
 }
 
 // Show Link Person Modal
@@ -736,3 +803,269 @@ function showModalAlert(type, message) {
         alertContainer.textContent = '';
     }, 4000);
 }
+
+// Approve Support
+async function approveSupport(supportId, amount, month, firstName, lastName) {
+    // Validate inputs
+    if (!amount || parseFloat(amount) <= 0) {
+        alert('נא להזין סכום תמיכה תקין');
+        return;
+    }
+    
+    if (!month) {
+        alert('נא לבחור חודש תמיכה');
+        return;
+    }
+    
+    // Confirm approval
+    const confirmMsg = `האם לאשר תמיכה עבור ${firstName} ${lastName}?\nסכום: ${formatCurrency(amount)}\nחודש: ${month}`;
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('action', 'approve_support');
+    formData.append('support_id', supportId);
+    formData.append('amount', amount);
+    formData.append('support_month', month);
+    
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (csrfToken) {
+        formData.append('csrf_token', csrfToken);
+    }
+    
+    try {
+        const response = await fetch('supports_api.php', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', result.message || 'התמיכה אושרה בהצלחה');
+            loadSupportsData();
+        } else {
+            showAlert('error', result.error || 'שגיאה באישור התמיכה');
+        }
+    } catch (error) {
+        console.error('Error approving support:', error);
+        showAlert('error', 'שגיאה באישור התמיכה');
+    }
+}
+
+// Render Approved Table
+function renderApprovedTable(data) {
+    const tbody = document.getElementById('approvedTableBody');
+    tbody.innerHTML = '';
+    
+    let totalAmount = 0;
+    
+    data.forEach(approved => {
+        const row = document.createElement('tr');
+        
+        totalAmount += parseFloat(approved.amount || 0);
+        
+        row.innerHTML = `
+            <td>${approved.donor_number || ''}</td>
+            <td>${approved.first_name || ''}</td>
+            <td>${approved.last_name || ''}</td>
+            <td>${formatCurrency(approved.amount)}</td>
+            <td>${formatMonth(approved.support_month)}</td>
+            <td>${formatDate(approved.approved_at)}</td>
+            <td>
+                <button class="btn btn-sm btn-danger delete-approved-btn" data-id="${approved.id}">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        `;
+        
+        tbody.appendChild(row);
+    });
+    
+    // Add event listeners
+    tbody.querySelectorAll('.delete-approved-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const id = this.dataset.id;
+            await deleteApprovedSupport(id);
+        });
+    });
+    
+    // Update total
+    document.getElementById('totalApprovedAmount').innerHTML = `<strong>${formatCurrency(totalAmount)}</strong>`;
+}
+
+// Delete Approved Support
+async function deleteApprovedSupport(id) {
+    if (!confirm('האם למחוק תמיכה מאושרת זו?')) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('action', 'delete_approved_support');
+    formData.append('id', id);
+    
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+    if (csrfToken) {
+        formData.append('csrf_token', csrfToken);
+    }
+    
+    try {
+        const response = await fetch('supports_api.php', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showAlert('success', result.message || 'נמחק בהצלחה');
+            loadSupportsData();
+        } else {
+            showAlert('error', result.error || 'שגיאה במחיקה');
+        }
+    } catch (error) {
+        console.error('Error deleting approved support:', error);
+        showAlert('error', 'שגיאה במחיקה');
+    }
+}
+
+// Format Month for display
+function formatMonth(monthString) {
+    if (!monthString) return '<span style="color: #999; font-style: italic;">לא צוין</span>';
+    const [year, month] = monthString.split('-');
+    if (!year || !month) return '<span style="color: #999; font-style: italic;">לא צוין</span>';
+    const monthNames = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 
+                        'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+    return `${monthNames[parseInt(month) - 1]} ${year}`;
+}
+
+// Update Approve Selected Button visibility
+function updateApproveSelectedButton() {
+    const checkboxes = document.querySelectorAll('.support-checkbox:checked');
+    const button = document.getElementById('approveSelectedBtn');
+    const span = button.querySelector('span');
+    
+    if (checkboxes.length > 0) {
+        button.style.display = 'inline-flex';
+        span.textContent = `אשר ${checkboxes.length} נבחרים`;
+    } else {
+        button.style.display = 'none';
+    }
+}
+
+// Approve Selected Supports
+async function approveSelectedSupports() {
+    const checkboxes = document.querySelectorAll('.support-checkbox:checked');
+    
+    if (checkboxes.length === 0) {
+        alert('נא לבחור רשומות לאישור');
+        return;
+    }
+    
+    let successCount = 0;
+    let errorCount = 0;
+    let errors = [];
+    
+    for (const checkbox of checkboxes) {
+        const supportId = checkbox.dataset.id;
+        
+        // Get fresh data from server
+        let support;
+        try {
+            const response = await fetch(`supports_api.php?action=get_one&id=${supportId}`, {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            const result = await response.json();
+            
+            if (!result.success) {
+                errorCount++;
+                errors.push(`רשומה ${supportId}: לא נמצאה`);
+                continue;
+            }
+            
+            support = result.data;
+        } catch (error) {
+            errorCount++;
+            errors.push(`רשומה ${supportId}: שגיאה בטעינת נתונים`);
+            continue;
+        }
+        
+        const amount = support.support_amount || 0;
+        const month = support.support_month;
+        const firstName = support.first_name || '';
+        const lastName = support.last_name || '';
+        
+        // Validate month (amount can be 0, server will calculate)
+        if (!month) {
+            errorCount++;
+            errors.push(`${firstName} ${lastName}: חסר חודש תמיכה`);
+            continue;
+        }
+        
+        const formData = new FormData();
+        formData.append('action', 'approve_support');
+        formData.append('support_id', supportId);
+        formData.append('amount', amount);
+        formData.append('support_month', month);
+        
+        // Get CSRF token
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        if (csrfToken) {
+            formData.append('csrf_token', csrfToken);
+        }
+        
+        try {
+            const response = await fetch('supports_api.php', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                successCount++;
+            } else {
+                errorCount++;
+                errors.push(`${firstName} ${lastName}: ${result.error}`);
+            }
+        } catch (error) {
+            errorCount++;
+            errors.push(`${firstName} ${lastName}: שגיאת שרת`);
+        }
+    }
+    
+    // Show summary
+    let message = '';
+    if (successCount > 0) {
+        message += `✅ ${successCount} תמיכות אושרו בהצלחה\n`;
+    }
+    if (errorCount > 0) {
+        message += `❌ ${errorCount} תמיכות נכשלו:\n`;
+        errors.forEach(err => {
+            message += `   • ${err}\n`;
+        });
+    }
+    
+    if (errorCount > 0) {
+        alert(message);
+    } else {
+        showAlert('success', message);
+    }
+    
+    loadSupportsData();
+}
+

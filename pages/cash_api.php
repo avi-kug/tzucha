@@ -9,9 +9,26 @@
 header('Content-Type: application/json; charset=utf-8');
 
 // ============================================================
-// Load .env & DB
+// Authentication & Authorization
 // ============================================================
+require_once __DIR__ . '/../config/auth.php';
 require_once __DIR__ . '/../config/db.php';
+
+if (!auth_is_logged_in()) {
+    http_response_code(401);
+    echo json_encode(['error' => 'לא מחובר'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+if (!auth_has_permission('cash')) {
+    http_response_code(403);
+    echo json_encode(['error' => 'אין הרשאה'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ============================================================
+// Load .env
+// ============================================================
 $envPath = dirname(__DIR__) . '/.env';
 if (is_readable($envPath)) {
     $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);

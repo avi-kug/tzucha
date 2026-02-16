@@ -148,6 +148,7 @@ include '../templates/header.php';
 <div class="tabs-nav">
     <button class="tab-btn active" data-tab="users">משתמשים</button>
     <button class="tab-btn" data-tab="attempts">ניסיונות כניסה</button>
+    <button class="tab-btn" data-tab="security-logs">לוגי אבטחה</button>
 </div>
 
 <div class="tab-panel active" id="users-tab">
@@ -242,6 +243,72 @@ include '../templates/header.php';
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="tab-panel" id="security-logs-tab">
+    <div id="security-logs">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="mb-3">לוגי אבטחה</h5>
+                
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label class="form-label">סינון לפי סוג אירוע:</label>
+                        <select id="eventTypeFilter" class="form-select">
+                            <option value="">הכל</option>
+                            <option value="LOGIN_SUCCESS">כניסה מוצלחת</option>
+                            <option value="LOGIN_FAILED">כניסה נכשלה</option>
+                            <option value="LOGIN_RATE_LIMIT">הגבלת קצב</option>
+                            <option value="LOGIN_OTP_SENT">OTP נשלח</option>
+                            <option value="LOGIN_OTP_VERIFY_FAILED">OTP נכשל</option>
+                            <option value="LOGIN_INACTIVE_USER">משתמש לא פעיל</option>
+                            <option value="LOGOUT">יציאה</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">חיפוש (משתמש/IP):</label>
+                        <input type="text" id="logSearch" class="form-control" placeholder="הקלד לחיפוש...">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">בחר קובץ לוג:</label>
+                        <select id="logFileSelect" class="form-select">
+                            <option value="">טוען קבצים...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">&nbsp;</label>
+                        <button id="downloadLogBtn" class="btn btn-success w-100">הורד לוג</button>
+                    </div>
+                </div>
+
+                <div id="logStats" class="mb-3 p-3 bg-light rounded" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-3"><strong>סה"כ אירועים:</strong> <span id="statTotal">0</span></div>
+                        <div class="col-md-3"><strong>כניסות מוצלחות:</strong> <span id="statSuccess">0</span></div>
+                        <div class="col-md-3"><strong>כניסות נכשלות:</strong> <span id="statFailed">0</span></div>
+                        <div class="col-md-3"><strong>הגבלות קצב:</strong> <span id="statRateLimit">0</span></div>
+                    </div>
+                </div>
+
+                <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+                    <table class="table table-striped table-hover mb-0" id="securityLogsTable">
+                        <thead class="table-dark" style="position: sticky; top: 0; z-index: 10;">
+                            <tr>
+                                <th style="width: 15%;">זמן</th>
+                                <th style="width: 15%;">משתמש</th>
+                                <th style="width: 12%;">IP</th>
+                                <th style="width: 18%;">סוג אירוע</th>
+                                <th style="width: 40%;">פרטים</th>
+                            </tr>
+                        </thead>
+                        <tbody id="securityLogsBody">
+                            <tr><td colspan="5" class="text-center">טוען לוגים...</td></tr>
                         </tbody>
                     </table>
                 </div>

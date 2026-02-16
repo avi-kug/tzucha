@@ -25,7 +25,12 @@ class SupportsRepository {
      * קבלת רשומת תמיכה לפי ID
      */
     public function getById($id) {
-        $stmt = $this->db->prepare("SELECT * FROM supports WHERE id = ?");
+        $stmt = $this->db->prepare("
+            SELECT s.*, p.donor_number 
+            FROM supports s 
+            LEFT JOIN people p ON s.person_id = p.id 
+            WHERE s.id = ?
+        ");
         $stmt->execute([$id]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
@@ -61,7 +66,8 @@ class SupportsRepository {
             housing_expenses, tuition_expenses, recurring_exceptional_expense, exceptional_expense_details,
             difficulty_reason, notes,
             account_holder_name, bank_name, branch_number, account_number,
-            support_requester_name, transaction_number, include_exceptional_in_calc
+            support_requester_name, transaction_number, include_exceptional_in_calc,
+            support_amount, support_month
         ) VALUES (
             :person_id, :position_name, :first_name, :last_name, :id_number, :city, :street, :phone,
             :household_members, :married_children,
@@ -71,7 +77,8 @@ class SupportsRepository {
             :housing_expenses, :tuition_expenses, :recurring_exceptional_expense, :exceptional_expense_details,
             :difficulty_reason, :notes,
             :account_holder_name, :bank_name, :branch_number, :account_number,
-            :support_requester_name, :transaction_number, :include_exceptional_in_calc
+            :support_requester_name, :transaction_number, :include_exceptional_in_calc,
+            :support_amount, :support_month
         )";
 
         $stmt = $this->db->prepare($sql);
@@ -118,7 +125,9 @@ class SupportsRepository {
             account_number = :account_number,
             support_requester_name = :support_requester_name,
             transaction_number = :transaction_number,
-            include_exceptional_in_calc = :include_exceptional_in_calc
+            include_exceptional_in_calc = :include_exceptional_in_calc,
+            support_amount = :support_amount,
+            support_month = :support_month
         WHERE id = :id";
 
         $data['id'] = $id;

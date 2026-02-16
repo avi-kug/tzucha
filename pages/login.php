@@ -88,7 +88,16 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
 
-    // Rate limit: 5 attempts per 10 minutes per IP
+    // Check rate limit using new function
+    try {
+        check_login_rate_limit($username);
+    } catch (Exception $e) {
+        $errors[] = $e->getMessage();
+        $step = 'credentials';
+        goto skip_login;
+    }
+
+    // Rate limit: 5 attempts per 10 minutes per IP (keep existing DB tracking)
     $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     $ip = trim(explode(',', $ip)[0]);
     $limitWindowMinutes = 10;
@@ -98,6 +107,7 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
     $attempts = (int)$stmt->fetchColumn();
     if ($attempts >= $limitMax) {
         $errors[] = 'יותר מדי ניסיונות כניסה. נסה שוב בעוד מספר דקות.';
+        security_log('LOGIN_RATE_LIMIT_IP', ['username' => $username, 'ip' => $ip, 'attempts' => $attempts]);
         unset($_SESSION['pending_user_id'], $_SESSION['pending_username']);
         $_SESSION['login_step'] = 'credentials';
         $step = 'credentials';
@@ -112,14 +122,18 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             $errors[] = 'שם משתמש או סיסמה לא נכונים.';
             $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 0, ?, ?)')
                 ->execute([$username, $ip, $geo['city'], $geo['country']]);
+            record_failed_login($username);
         } elseif ((int)$user['is_active'] !== 1) {
             $errors[] = 'משתמש לא פעיל.';
             $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 0, ?, ?)')
                 ->execute([$username, $ip, $geo['city'], $geo['country']]);
+            record_failed_login($username);
+            security_log('LOGIN_INACTIVE_USER', ['username' => $username]);
         } elseif (empty($user['email'])) {
             $errors[] = 'אין כתובת מייל למשתמש זה.';
             $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 0, ?, ?)')
                 ->execute([$username, $ip, $geo['city'], $geo['country']]);
+            record_failed_login($username);
         } else {
         $code = (string)random_int(100000, 999999);
         $hash = password_hash($code, PASSWORD_DEFAULT);
@@ -135,14 +149,18 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             $errors[] = 'שליחת הקוד נכשלה. בדוק הגדרות מייל.';
             $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 0, ?, ?)')
                 ->execute([$user['username'], $ip, $geo['city'], $geo['country']]);
+            record_failed_login($username);
+            security_log('LOGIN_OTP_SEND_FAILED', ['username' => $username]);
         } else {
             $_SESSION['pending_user_id'] = $user['id'];
             $_SESSION['pending_username'] = $user['username'];
             $_SESSION['login_step'] = 'otp';
             $step = 'otp';
+            security_log('LOGIN_OTP_SENT', ['username' => $username]);
         }
         }
     }
+    skip_login:
 }
 
 if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'verify' && csrf_validate()) {
@@ -162,12 +180,15 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             $pendingUsername = $_SESSION['pending_username'] ?? '';
             $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 0, ?, ?)')
                 ->execute([$pendingUsername, $ip, $geo['city'], $geo['country']]);
+            record_failed_login($pendingUsername);
+            security_log('LOGIN_OTP_VERIFY_FAILED', ['username' => $pendingUsername, 'code_expired' => (strtotime($otpRow['expires_at'] ?? '') < time())]);
         } else {
             $userStmt = $pdo->prepare('SELECT * FROM users WHERE id = ? LIMIT 1');
             $userStmt->execute([$userId]);
             $user = $userStmt->fetch(PDO::FETCH_ASSOC);
             if (!$user) {
                 $errors[] = 'משתמש לא נמצא.';
+                security_log('LOGIN_USER_NOT_FOUND', ['user_id' => $userId]);
             } else {
                 session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
@@ -182,6 +203,11 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
                 $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 1, ?, ?)')
                     ->execute([$user['username'], $ip, $geo['city'], $geo['country']]);
                 $pdo->prepare('DELETE FROM login_otps WHERE user_id = ?')->execute([$user['id']]);
+                
+                // Reset rate limiting and log successful login
+                reset_login_attempts($user['username']);
+                security_log('LOGIN_SUCCESS', ['username' => $user['username'], 'role' => $user['role']]);
+                
                 unset($_SESSION['pending_user_id'], $_SESSION['pending_username'], $_SESSION['login_step']);
                 $redirect = $_SESSION['redirect_after_login'] ?? '/tzucha/pages/index.php';
                 unset($_SESSION['redirect_after_login']);

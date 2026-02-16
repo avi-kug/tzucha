@@ -161,3 +161,69 @@ function auth_guard_page($pdo, $navItems) {
         }
     }
 }
+
+function security_log($event, $details = []) {
+    $logDir = dirname(__DIR__) . '/storage/logs';
+    if (!is_dir($logDir)) {
+        mkdir($logDir, 0700, true);
+    }
+    
+    $logFile = $logDir . '/security_' . date('Y-m-d') . '.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $user = $_SESSION['username'] ?? 'guest';
+    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    
+    $message = sprintf(
+        "[%s] User: %s | IP: %s | Event: %s | Details: %s\n",
+        $timestamp,
+        $user,
+        $ip,
+        $event,
+        json_encode($details, JSON_UNESCAPED_UNICODE)
+    );
+    
+    file_put_contents($logFile, $message, FILE_APPEND | LOCK_EX);
+}
+
+function check_login_rate_limit($username) {
+    $max_attempts = 5;
+    $lockout_time = 15 * 60; // 15 minutes
+    
+    $key = 'login_attempts_' . md5($username . ($_SERVER['REMOTE_ADDR'] ?? ''));
+    
+    if (!isset($_SESSION[$key])) {
+        $_SESSION[$key] = ['count' => 0, 'first_attempt' => time()];
+    }
+    
+    $data = $_SESSION[$key];
+    
+    // Reset if lockout time passed
+    if (time() - $data['first_attempt'] > $lockout_time) {
+        $_SESSION[$key] = ['count' => 0, 'first_attempt' => time()];
+        return true;
+    }
+    
+    // Check if locked out
+    if ($data['count'] >= $max_attempts) {
+        $remaining = $lockout_time - (time() - $data['first_attempt']);
+        $minutes = ceil($remaining / 60);
+        security_log('LOGIN_RATE_LIMIT', ['username' => $username, 'attempts' => $data['count']]);
+        throw new Exception("יותר מדי ניסיונות כושלים. נסה שוב בעוד $minutes דקות.");
+    }
+    
+    return true;
+}
+
+function record_failed_login($username) {
+    $key = 'login_attempts_' . md5($username . ($_SERVER['REMOTE_ADDR'] ?? ''));
+    if (!isset($_SESSION[$key])) {
+        $_SESSION[$key] = ['count' => 0, 'first_attempt' => time()];
+    }
+    $_SESSION[$key]['count']++;
+    security_log('LOGIN_FAILED', ['username' => $username, 'attempts' => $_SESSION[$key]['count']]);
+}
+
+function reset_login_attempts($username) {
+    $key = 'login_attempts_' . md5($username . ($_SERVER['REMOTE_ADDR'] ?? ''));
+    unset($_SESSION[$key]);
+}

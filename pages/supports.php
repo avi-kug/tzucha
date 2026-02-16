@@ -7,6 +7,9 @@
             <button id="addSupportBtn" class="btn btn-primary">
                 <i class="bi bi-plus-lg"></i> הוסף תמיכה
             </button>
+            <button id="approveSelectedBtn" class="btn btn-success" style="display: none;">
+                <i class="bi bi-check-circle"></i> <span>אשר נבחרים</span>
+            </button>
             <button id="exportExcelBtn" class="btn btn-success">
                 <i class="bi bi-file-earmark-excel"></i> ייצוא לאקסל
             </button>
@@ -20,7 +23,9 @@
     <!-- Tabs Navigation -->
     <div class="tabs-nav">
         <a href="#data" class="tab-btn" data-tab="data">נתונים</a>
+        <a href="#approved" class="tab-btn" data-tab="approved">תמיכות שאושרו</a>
         <a href="#summary" class="tab-btn active" data-tab="summary">תמיכה</a>
+
     </div>
 
     <!-- Tab: תמיכה (Summary with Calculations) -->
@@ -39,6 +44,7 @@
                         <th>כולל חריגה?</th>
                         <th>סה"כ הכנסות לנפש</th>
                         <th>סה"כ לתמיכה</th>
+                        <th>חודש תמיכה</th>
                         <th>פעולות</th>
                     </tr>
                 </thead>
@@ -51,8 +57,38 @@
                         <td id="totalIncome"><strong>0</strong></td>
                         <td id="totalExpenses"><strong>0</strong></td>
                         <td></td>
-                        <td id="totalSupport"><strong>0</strong></td>
                         <td></td>
+                        <td id="totalSupport"><strong>0</strong></td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- Tab: תמיכות שאושרו (Approved Supports) -->
+    <div id="approved-tab" class="tab-panel">
+        <div class="table-container">
+            <table id="approvedTable" class="supports-table">
+                <thead>
+                    <tr>
+                        <th>מס' תורם</th>
+                        <th>שם</th>
+                        <th>משפחה</th>
+                        <th>סכום</th>
+                        <th>חודש תמיכה</th>
+                        <th>תאריך אישור</th>
+                        <th>פעולות</th>
+                    </tr>
+                </thead>
+                <tbody id="approvedTableBody">
+                    <!-- Data will be loaded here -->
+                </tbody>
+                <tfoot>
+                    <tr class="totals-row">
+                        <td colspan="3"><strong>סה"כ:</strong></td>
+                        <td id="totalApprovedAmount"><strong>0</strong></td>
+                        <td colspan="3"></td>
                     </tr>
                 </tfoot>
             </table>
@@ -287,6 +323,21 @@
                     <div class="form-group">
                         <label for="notes">הערות:</label>
                         <textarea id="notes" name="notes" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+
+                <!-- פרטי תמיכה -->
+                <div class="form-section">
+                    <h4>פרטי תמיכה</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="supportAmount">סכום תמיכה:</label>
+                            <input type="number" id="supportAmount" name="support_amount" class="form-control" step="0.01" min="0" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="supportMonth">חודש תמיכה:</label>
+                            <input type="month" id="supportMonth" name="support_month" class="form-control" value="<?php echo date('Y-m'); ?>">
+                        </div>
                     </div>
                 </div>
 
