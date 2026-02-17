@@ -1,6 +1,18 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Production-safe error handling
+$isProduction = !empty($_SERVER['SERVER_NAME']) && 
+                strpos($_SERVER['SERVER_NAME'], 'localhost') === false;
+
+if ($isProduction) {
+    error_reporting(0);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+    ini_set('error_log', __DIR__ . '/../logs/php-errors.log');
+} else {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+}
+
 require_once '../config/db.php';
 require_once '../vendor/autoload.php';
 session_start();

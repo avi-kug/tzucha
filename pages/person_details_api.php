@@ -93,6 +93,23 @@ try {
         $result['supports'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     
+    // Get approved supports by donor_number
+    if (isset($person['donor_number']) && !empty($person['donor_number'])) {
+        $stmt = $pdo->prepare("
+            SELECT 
+                a.*,
+                u.username as approved_by_name
+            FROM approved_supports a
+            LEFT JOIN users u ON a.approved_by = u.id
+            WHERE a.donor_number = ?
+            ORDER BY a.support_month DESC, a.created_at DESC
+        ");
+        $stmt->execute([$person['donor_number']]);
+        $result['approved_supports'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        $result['approved_supports'] = [];
+    }
+    
     echo json_encode($result, JSON_UNESCAPED_UNICODE);
     
 } catch (Exception $e) {

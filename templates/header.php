@@ -30,6 +30,12 @@ auth_guard_page($pdo, $navItems);
             <?php $currentPage = basename($_SERVER['SCRIPT_NAME']); ?>
             <ul class="nav flex-column" style="flex:1 1 auto;">
                 <?php foreach ($navItems as $item): ?>
+                    <?php 
+                    // Skip admin-only items if user is not admin
+                    if (isset($item['admin_only']) && $item['admin_only'] && !auth_is_admin()) {
+                        continue;
+                    }
+                    ?>
                     <?php if (auth_has_permission($item['key'])): ?>
                         <?php $isActive = (basename($item['url']) === $currentPage); ?>
                         <li class="nav-item">

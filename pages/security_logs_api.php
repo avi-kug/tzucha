@@ -1,14 +1,142 @@
 <?php
+/**
+ * Security Logs API - Admin Only
+ */
 require_once '../config/auth.php';
+require_once '../config/db.php';
 
-// Only admins can view security logs
-if (!auth_is_logged_in() || !auth_has_permission('users')) {
+header('Content-Type: application/json');
+
+// Check if user is admin
+if (!auth_is_admin()) {
     http_response_code(403);
-    echo json_encode(['error' => 'אין הרשאה']);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Access denied - Admin only'
+    ]);
     exit;
 }
 
-header('Content-Type: application/json; charset=utf-8');
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // Fetch logs with filters
+    $filters = [];
+    $params = [];
+    
+    if (!empty($_GET['action'])) {
+        $filters[] = 'action = ?';
+        $params[] = $_GET['action'];
+    }
+    
+    if (!empty($_GET['severity'])) {
+        $filters[] = 'severity = ?';
+        $params[] = $_GET['severity'];
+    }
+    
+    if (!empty($_GET['date'])) {
+        $filters[] = 'DATE(timestamp) = ?';
+        $params[] = $_GET['date'];
+    }
+    
+    if (!empty($_GET['username'])) {
+        $filters[] = 'username LIKE ?';
+        $params[] = '%' . $_GET['username'] . '%';
+    }
+    
+    $whereClause = !empty($filters) ? 'WHERE ' . implode(' AND ', $filters) : '';
+    
+    try {
+        // First check if table exists
+        $tableCheck = $pdo->query("SHOW TABLES LIKE 'security_logs'");
+        if (!$tableCheck->fetch()) {
+            echo json_encode([
+                'success' => false,
+                'error' => 'Security logs table does not exist. Please run database migrations.'
+            ]);
+            exit;
+        }
+        
+        // Get logs
+        $stmt = $pdo->prepare("
+            SELECT * FROM security_logs 
+            {$whereClause}
+            ORDER BY timestamp DESC 
+            LIMIT 500
+        ");
+        $stmt->execute($params);
+        $logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Get stats
+        $statsStmt = $pdo->query("
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) as critical,
+                SUM(CASE WHEN severity = 'warning' THEN 1 ELSE 0 END) as warning,
+                SUM(CASE WHEN timestamp > DATE_SUB(NOW(), INTERVAL 24 HOUR) THEN 1 ELSE 0 END) as last_24h
+            FROM security_logs
+        ");
+        $stats = $statsStmt->fetch(PDO::FETCH_ASSOC);
+        
+        // Ensure stats are never null
+        if (!$stats) {
+            $stats = [
+                'total' => 0,
+                'critical' => 0,
+                'warning' => 0,
+                'last_24h' => 0
+            ];
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'logs' => $logs ?: [],
+            'stats' => $stats,
+            'message' => count($logs) === 0 ? 'No logs found' : null
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+    }
+    
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Cleanup old logs
+    if ($_POST['action'] === 'cleanup') {
+        $days = (int)($_POST['days'] ?? 30);
+        
+        try {
+            $stmt = $pdo->prepare("DELETE FROM security_logs WHERE timestamp < DATE_SUB(NOW(), INTERVAL ? DAY)");
+            $stmt->execute([$days]);
+            $deleted = $stmt->rowCount();
+            
+            echo json_encode([
+                'success' => true,
+                'deleted' => $deleted
+            ]);
+            
+        } catch (Exception $e) {
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]);
+        }
+    } else {
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Invalid action'
+        ]);
+    }
+}
+
+exit;
+
+// OLD CODE BELOW (kept for reference, not executed)
+// ================================================
 
 $action = $_GET['action'] ?? '';
 $logsDir = __DIR__ . '/../storage/logs';

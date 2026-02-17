@@ -1,22 +1,53 @@
-# Composer dependencies
-/vendor/
-/composer.phar
+# Environment variables
+.env
+.env.local
+.env.production
+.env.*.local
 
-# Environment and secrets
-/.env
-/config/db.php
-/storage/
+# Uploads and temporary files
+uploads/*
+!uploads/.gitkeep
+!uploads/index.php
+storage/*
+!storage/.gitignore
 
-# Uploads and generated files
-/uploads/
-/public/cache/
-public/*.log
+# Logs
+*.log
+logs/
+error_log
 
-# Editor/IDE settings
-/.vscode/
-/.idea/
-*.code-workspace
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
 
-# OS-generated files
-Thumbs.db
+# OS generated files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+
+# Composer
+vendor/
+composer.phar
+
+# Sensitive config files
+config/db.production.php
+
+# Test and debugging
+test.php
+debug.php
+phpinfo.php

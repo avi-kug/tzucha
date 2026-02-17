@@ -406,6 +406,25 @@ try {
     if ($outputType === 'labels') {
         error_log("Print PDF Labels: Creating mPDF instance for labels");
         
+        // Build map of gizbar -> phone number
+        $gizbarPhones = [];
+        foreach ($reports as $report) {
+            foreach ($report['people'] as $person) {
+                $gizbarName = trim((string)($person['gizbar'] ?? ''));
+                if ($gizbarName !== '' && !isset($gizbarPhones[$gizbarName])) {
+                    // Try to find gizbar's phone by matching family name or full name
+                    $phoneStmt = $pdo->prepare("
+                        SELECT husband_mobile FROM people 
+                        WHERE family_name = ? OR CONCAT(family_name, ' ', first_name) = ? 
+                        LIMIT 1
+                    ");
+                    $phoneStmt->execute([$gizbarName, $gizbarName]);
+                    $phoneRow = $phoneStmt->fetch(PDO::FETCH_ASSOC);
+                    $gizbarPhones[$gizbarName] = $phoneRow['husband_mobile'] ?? '';
+                }
+            }
+        }
+        
         $mpdf = new \Mpdf\Mpdf([
             'mode' => 'utf-8',
             'format' => [210, 296.9],
@@ -466,6 +485,7 @@ try {
                             'mobile' => '',
                             'month' => $month,
                             'gizbar' => $gizbarName,
+                            'gizbar_phone' => $gizbarPhones[$gizbarName] ?? '',
                             'is_bag' => true,
                         ];
                     }
@@ -498,6 +518,7 @@ try {
                         'mobile' => '',
                         'month' => $month,
                         'gizbar' => $gizbarName,
+                        'gizbar_phone' => $gizbarPhones[$gizbarName] ?? '',
                         'is_bag' => true,
                     ];
                 }
@@ -547,7 +568,8 @@ try {
                             if ($isBag) {
                                 $lines = [
                                     htmlspecialchars($label['family'], ENT_QUOTES, 'UTF-8'),
-                                    '<strong>' . htmlspecialchars($label['gizbar'], ENT_QUOTES, 'UTF-8') . '</strong> - <strong>' . htmlspecialchars($label['month'], ENT_QUOTES, 'UTF-8') . '</strong>'
+                                    '<strong>' . htmlspecialchars($label['gizbar'], ENT_QUOTES, 'UTF-8') . '</strong> - <strong>' . htmlspecialchars($label['month'], ENT_QUOTES, 'UTF-8') . '</strong>',
+                                     htmlspecialchars($label['gizbar_phone'] ?? '', ENT_QUOTES, 'UTF-8')
                                 ];
                             } else {
                                 $lines = [

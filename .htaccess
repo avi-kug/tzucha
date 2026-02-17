@@ -1,13 +1,42 @@
 Options -Indexes
 
+# Protect .env files
+<Files .env>
+    Require all denied
+</Files>
+
+<Files .env.example>
+    Require all denied
+</Files>
+
+# Protect sensitive files
 <FilesMatch "^\.">
     Require all denied
 </FilesMatch>
 
-<FilesMatch "(?i)(composer\.json|composer\.lock|database_setup\.sql|update_people_table.*\.sql|\.env)$">
+<FilesMatch "(?i)(composer\.json|composer\.lock|database_setup\.sql|update_people_table.*\.sql|\.env|\.sql|\.log|\.bak|\.backup)$">
     Require all denied
 </FilesMatch>
 
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "DENY"
+    Header set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# PHP security settings (for production)
+<IfModule mod_php.c>
+    php_flag expose_php Off
+    php_value upload_max_filesize 10M
+    php_value post_max_size 10M
+    php_value memory_limit 256M
+    php_value max_execution_time 120
+</IfModule>
+
+# Force HTTPS (exclude localhost for development)
 RewriteEngine On
 RewriteCond %{HTTPS} !=on
 RewriteCond %{HTTP_HOST} !^localhost(:\d+)?$ [NC]

@@ -1,5 +1,21 @@
 
 (function() {
+    // jQuery debounce function
+    $.debounce = function(wait, func, immediate) {
+        let timeout;
+        return function() {
+            const context = this, args = arguments;
+            const later = function() {
+                timeout = null;
+                if (!immediate) func.apply(context, args);
+            };
+            const callNow = immediate && !timeout;
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+            if (callNow) func.apply(context, args);
+        };
+    };
+    
     const dataEl = document.getElementById('peopleData');
     const gizbarToAmarchal = dataEl ? JSON.parse(dataEl.dataset.gizbarToAmarchal || '{}') : {};
     const gizbarList = dataEl ? JSON.parse(dataEl.dataset.gizbarList || '[]') : [];
@@ -179,8 +195,210 @@
                 
                 // Hide table loader and show content
                 hideTableLoader('full');
+                
+                // Add filter icons to headers
+                addColumnFilterIcons(table, 'peopleTable');
+                
+                // Enable multi-term search with comma separation
+                enableMultiTermSearch();
             }
         });
+        
+        // Multi-term search functionality (comma-separated)
+        function enableMultiTermSearch() {
+            // Add helper text
+            const $searchWrapper = $('.dataTables_filter');
+            if ($searchWrapper.length && !$searchWrapper.find('.search-help').length) {
+                const $helpText = $('<small class="text-muted d-block mt-1 search-help" style="font-size: 0.75rem;">ניתן לחפש מספר ערכים בפסיק, למשל: "כהן, לוי, ישראל"</small>');
+                $searchWrapper.append($helpText);
+            }
+            
+            // Override search behavior
+            const $searchInput = $('.dataTables_filter input');
+            $searchInput.off('keyup.DT search.DT input.DT paste.DT cut.DT');
+            
+            $searchInput.on('keyup.multiSearch search.multiSearch input.multiSearch paste.multiSearch cut.multiSearch', $.debounce(400, function() {
+                const searchValue = $(this).val();
+                
+                if (searchValue.includes(',')) {
+                    // Multi-term search with OR logic
+                    const terms = searchValue.split(',').map(t => t.trim()).filter(t => t !== '');
+                    const regexPattern = terms.map(t => $.fn.dataTable.util.escapeRegex(t)).join('|');
+                    table.search(regexPattern, true, false).draw();
+                } else {
+                    // Regular search
+                    table.search(searchValue).draw();
+                }
+            }));
+        }
+        
+        // Add filter icons to column headers
+        function addColumnFilterIcons(tableInstance, tableId) {
+            const $table = $('#' + tableId);
+            const $headers = $table.find('thead tr:first th');
+            
+            // Skip first 2 columns (checkbox and #) and last column (actions)
+            $headers.slice(2, -1).each(function(index) {
+                const $th = $(this);
+                const columnIndex = index + 2; // Adjust for skipped columns
+                const columnName = $th.text().trim();
+                
+                // Don't add if already has icon
+                if ($th.find('.filter-icon').length > 0) {
+                    return;
+                }
+                
+                // Add filter icon
+                const $icon = $('<i class="bi bi-funnel filter-icon ms-1" style="cursor: pointer; font-size: 0.8em; opacity: 0.5;"></i>');
+                $th.append($icon);
+                
+                // Create dropdown menu (hidden by default)
+                const dropdownId = 'filter-dropdown-' + tableId + '-' + columnIndex;
+                const $dropdown = $(`
+                    <div class="filter-dropdown" id="${dropdownId}" style="display: none; position: absolute; z-index: 9999; background: white; border: 1px solid #ccc; border-radius: 4px; padding: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); min-width: 250px;">
+                        <div class="mb-2">
+                            <label class="form-label mb-1" style="font-size: 0.85em; font-weight: bold;">סינון: ${columnName}</label>
+                            <select class="form-select form-select-sm mb-2 filter-mode">
+                                <option value="contains">מכיל</option>
+                                <option value="not_contains">לא מכיל</option>
+                                <option value="equals">שווה ל</option>
+                                <option value="not_equals">לא שווה ל</option>
+                                <option value="starts">מתחיל ב</option>
+                                <option value="ends">מסתיים ב</option>
+                                <option value="empty">ריק</option>
+                                <option value="not_empty">לא ריק</option>
+                            </select>
+                            <input type="text" class="form-control form-control-sm filter-value" placeholder="הזן ערך לחיפוש...">
+                        </div>
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button class="btn btn-sm btn-secondary filter-clear">נקה</button>
+                            <button class="btn btn-sm btn-primary filter-apply">החל</button>
+                        </div>
+                    </div>
+                `);
+                
+                $('body').append($dropdown);
+                
+                // Icon click handler
+                $icon.on('click', function(e) {
+                    e.stopPropagation();
+                    
+                    // Close other dropdowns
+                    $('.filter-dropdown').not('#' + dropdownId).hide();
+                    
+                    // Toggle this dropdown
+                    const isVisible = $dropdown.is(':visible');
+                    $dropdown.toggle();
+                    
+                    if (!isVisible) {
+                        // Position dropdown near the icon
+                        const iconOffset = $icon.offset();
+                        $dropdown.css({
+                            top: iconOffset.top + $icon.outerHeight() + 5,
+                            left: iconOffset.left - $dropdown.outerWidth() + $icon.outerWidth()
+                        });
+                    }
+                });
+                
+                // Apply filter
+                $dropdown.find('.filter-apply').on('click', function() {
+                    const mode = $dropdown.find('.filter-mode').val();
+                    const value = $dropdown.find('.filter-value').val();
+                    
+                    applyColumnFilter(tableInstance, columnIndex, value, mode, tableId);
+                    $icon.css('opacity', value || mode === 'empty' || mode === 'not_empty' ? '1' : '0.5');
+                    $dropdown.hide();
+                });
+                
+                // Clear filter
+                $dropdown.find('.filter-clear').on('click', function() {
+                    $dropdown.find('.filter-value').val('');
+                    $dropdown.find('.filter-mode').val('contains');
+                    clearColumnFilter(tableInstance, columnIndex, tableId);
+                    $icon.css('opacity', '0.5');
+                    $dropdown.hide();
+                });
+                
+                // Handle mode change - hide input for empty/not_empty
+                $dropdown.find('.filter-mode').on('change', function() {
+                    const mode = $(this).val();
+                    if (mode === 'empty' || mode === 'not_empty') {
+                        $dropdown.find('.filter-value').hide();
+                    } else {
+                        $dropdown.find('.filter-value').show();
+                    }
+                });
+                
+                // Enter key to apply
+                $dropdown.find('.filter-value').on('keypress', function(e) {
+                    if (e.which === 13) {
+                        $dropdown.find('.filter-apply').click();
+                    }
+                });
+            });
+            
+            // Close dropdowns on outside click
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.filter-dropdown, .filter-icon').length) {
+                    $('.filter-dropdown').hide();
+                }
+            });
+        }
+        
+        // Apply column filter
+        function applyColumnFilter(tableInstance, columnIndex, value, mode, tableId) {
+            // Remove previous filter for this column
+            const filterKey = tableId + '_col_' + columnIndex;
+            $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function(fn) {
+                return !fn.__filterKey || fn.__filterKey !== filterKey;
+            });
+            
+            // Add new filter
+            if (value || mode === 'empty' || mode === 'not_empty') {
+                const filterFunc = function(settings, searchData, index, rowData, counter) {
+                    if (settings.nTable.id !== tableId) {
+                        return true;
+                    }
+                    
+                    const cellData = (searchData[columnIndex] || '').toString().toLowerCase();
+                    const searchValue = value.toLowerCase();
+                    
+                    switch(mode) {
+                        case 'contains':
+                            return cellData.includes(searchValue);
+                        case 'not_contains':
+                            return !cellData.includes(searchValue);
+                        case 'equals':
+                            return cellData === searchValue;
+                        case 'not_equals':
+                            return cellData !== searchValue;
+                        case 'starts':
+                            return cellData.startsWith(searchValue);
+                        case 'ends':
+                            return cellData.endsWith(searchValue);
+                        case 'empty':
+                            return cellData === '';
+                        case 'not_empty':
+                            return cellData !== '';
+                        default:
+                            return true;
+                    }
+                };
+                filterFunc.__filterKey = filterKey;
+                $.fn.dataTable.ext.search.push(filterFunc);
+            }
+            
+            tableInstance.draw();
+        }
+        
+        // Clear column filter
+        function clearColumnFilter(tableInstance, columnIndex, tableId) {
+            const filterKey = tableId + '_col_' + columnIndex;
+            $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function(fn) {
+                return !fn.__filterKey || fn.__filterKey !== filterKey;
+            });
+            tableInstance.draw();
+        }
 
         function applyColumnResize(selector, dtInstance) {
             if (!$.fn.colResizable) { return; }
@@ -417,6 +635,7 @@
 
         let amarchalTable = null;
         let gizbarTable = null;
+        
         if ($('#amarchalTable').length) {
             if ($.fn.DataTable.isDataTable('#amarchalTable')) { $('#amarchalTable').DataTable().clear().destroy(); }
             const amarchalStateKey = 'amarchalTableState';
@@ -476,6 +695,9 @@
                     
                     // Hide table loader and show content
                     hideTableLoader('amarchal');
+                    
+                    // Add filter icons
+                    addColumnFilterIcons(amarchalTable, 'amarchalTable');
                 }
             });
             applyColumnResize('#amarchalTable', amarchalTable);
@@ -542,6 +764,9 @@
                     
                     // Hide table loader and show content
                     hideTableLoader('gizbar');
+                    
+                    // Add filter icons
+                    addColumnFilterIcons(gizbarTable, 'gizbarTable');
                 }
             });
             applyColumnResize('#gizbarTable', gizbarTable);
@@ -1096,16 +1321,54 @@ function showPersonDetailsModal(softwareId, personId, personName) {
             }
             $('#standingOrdersContent').html(soHtml);
             
-            // Populate supports
+            // Populate approved supports (תמיכות שאושרו)
             var supportsHtml = '';
-            if (data.supports && data.supports.length > 0) {
-                supportsHtml = '<table class="table table-sm"><thead><tr><th>תאריך</th><th>סכום</th><th>סוג</th><th>הערות</th></tr></thead><tbody>';
-                data.supports.forEach(function(item) {
-                    supportsHtml += '<tr><td>' + (item.date || '-') + '</td><td>' + (item.amount || '-') + '</td><td>' + (item.type || '-') + '</td><td>' + (item.notes || '-') + '</td></tr>';
+            if (data.approved_supports && data.approved_supports.length > 0) {
+                supportsHtml = '<div class="table-responsive">';
+                supportsHtml += '<table class="table table-sm table-striped table-hover">';
+                supportsHtml += '<thead class="table-light">';
+                supportsHtml += '<tr>';
+                supportsHtml += '<th>מס\' תורם</th>';
+                supportsHtml += '<th>שם</th>';
+                supportsHtml += '<th>משפחה</th>';
+                supportsHtml += '<th>סכום</th>';
+                supportsHtml += '<th>חודש תמיכה</th>';
+                supportsHtml += '<th>תאריך אישור</th>';
+                supportsHtml += '<th>אושר ע"י</th>';
+                supportsHtml += '</tr>';
+                supportsHtml += '</thead><tbody>';
+                
+                var totalAmount = 0;
+                data.approved_supports.forEach(function(item) {
+                    var amount = parseFloat(item.amount) || 0;
+                    totalAmount += amount;
+                    
+                    supportsHtml += '<tr>';
+                    supportsHtml += '<td>' + (item.donor_number || '-') + '</td>';
+                    supportsHtml += '<td>' + (item.first_name || '-') + '</td>';
+                    supportsHtml += '<td>' + (item.last_name || '-') + '</td>';
+                    supportsHtml += '<td class="text-end">' + amount.toFixed(2) + ' ש"ח</td>';
+                    supportsHtml += '<td>' + (item.support_month || '-') + '</td>';
+                    supportsHtml += '<td>' + (item.approved_at ? new Date(item.approved_at).toLocaleDateString('he-IL') : '-') + '</td>';
+                    supportsHtml += '<td>' + (item.approved_by_name || '-') + '</td>';
+                    supportsHtml += '</tr>';
                 });
-                supportsHtml += '</tbody></table>';
+                
+                supportsHtml += '</tbody>';
+                supportsHtml += '<tfoot class="table-light">';
+                supportsHtml += '<tr>';
+                supportsHtml += '<td colspan="3"><strong>סה"כ:</strong></td>';
+                supportsHtml += '<td class="text-end"><strong>' + totalAmount.toFixed(2) + ' ש"ח</strong></td>';
+                supportsHtml += '<td colspan="3"></td>';
+                supportsHtml += '</tr>';
+                supportsHtml += '</tfoot>';
+                supportsHtml += '</table>';
+                supportsHtml += '</div>';
             } else {
-                supportsHtml = '<p class="text-muted">לא נמצאו תמיכות</p>';
+                supportsHtml = '<div class="alert alert-info text-center" role="alert">';
+                supportsHtml += '<i class="bi bi-info-circle me-2"></i>';
+                supportsHtml += 'לא נמצאו תמיכות שאושרו עבור תורם זה';
+                supportsHtml += '</div>';
             }
             $('#supportsContent').html(supportsHtml);
         },

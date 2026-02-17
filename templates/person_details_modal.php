@@ -58,7 +58,7 @@
                     <div class="accordion-item">
                         <h2 class="accordion-header">
                             <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#supports">
-                                <i class="bi bi-gift me-2"></i> תמיכות
+                                <i class="bi bi-gift me-2"></i> תמיכות שאושרו
                             </button>
                         </h2>
                         <div id="supports" class="accordion-collapse collapse" data-bs-parent="#personDetailsAccordion">

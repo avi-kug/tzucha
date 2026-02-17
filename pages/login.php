@@ -135,6 +135,59 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
                 ->execute([$username, $ip, $geo['city'], $geo['country']]);
             record_failed_login($username);
         } else {
+        // Check if user already logged in successfully from this IP today
+        // BUT require OTP if user manually logged out since last successful login
+        $stmt = $pdo->prepare('
+            SELECT COUNT(*) 
+            FROM login_attempts 
+            WHERE username = ? 
+            AND ip_address = ? 
+            AND success = 1 
+            AND DATE(attempted_at) = CURDATE()
+        ');
+        $stmt->execute([$username, $ip]);
+        $loggedInToday = (int)$stmt->fetchColumn() > 0;
+        
+        // Check if there was a manual logout after last successful login today
+        $manualLogoutAfterLogin = false;
+        if ($loggedInToday) {
+            $stmt = $pdo->prepare('
+                SELECT 
+                    (SELECT MAX(attempted_at) FROM login_attempts WHERE username = ? AND ip_address = ? AND success = 1 AND DATE(attempted_at) = CURDATE()) as last_login,
+                    (SELECT MAX(attempted_at) FROM login_attempts WHERE username = ? AND ip_address = ? AND is_manual_logout = 1 AND DATE(attempted_at) = CURDATE()) as last_logout
+            ');
+            $stmt->execute([$username, $ip, $username, $ip]);
+            $times = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // If there was a logout after the last login, require OTP
+            if ($times && $times['last_logout'] && $times['last_login']) {
+                $manualLogoutAfterLogin = strtotime($times['last_logout']) > strtotime($times['last_login']);
+            }
+        }
+
+        if ($loggedInToday && !$manualLogoutAfterLogin) {
+            // Already logged in from this IP today AND no manual logout - skip OTP and login directly
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['username'] = $user['username'];
+            $_SESSION['is_admin'] = (int)$user['is_admin'] === 1;
+            $_SESSION['role'] = $user['role'] ?? ((int)$user['is_admin'] === 1 ? 'admin' : 'viewer');
+            $_SESSION['last_activity'] = time();
+            auth_load_permissions($pdo, $user['id']);
+            
+            $pdo->prepare('INSERT INTO login_attempts (username, ip_address, attempted_at, success, geo_city, geo_country) VALUES (?, ?, NOW(), 1, ?, ?)')
+                ->execute([$user['username'], $ip, $geo['city'], $geo['country']]);
+            
+            reset_login_attempts($user['username']);
+            security_log('LOGIN_SUCCESS_SAME_IP_TODAY', ['username' => $user['username'], 'ip' => $ip, 'reason' => 'no_manual_logout']);
+            
+            $redirect = $_SESSION['redirect_after_login'] ?? '/tzucha/pages/index.php';
+            unset($_SESSION['redirect_after_login']);
+            header('Location: ' . $redirect);
+            exit;
+        }
+
+        // First login from this IP today - require OTP
         $code = (string)random_int(100000, 999999);
         $hash = password_hash($code, PASSWORD_DEFAULT);
         $expiresAt = date('Y-m-d H:i:s', time() + 10 * 60);
@@ -156,7 +209,8 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
             $_SESSION['pending_username'] = $user['username'];
             $_SESSION['login_step'] = 'otp';
             $step = 'otp';
-            security_log('LOGIN_OTP_SENT', ['username' => $username]);
+            $reason = $manualLogoutAfterLogin ? 'manual_logout_detected' : 'first_login_from_ip_today';
+            security_log('LOGIN_OTP_SENT', ['username' => $username, 'reason' => $reason]);
         }
         }
     }

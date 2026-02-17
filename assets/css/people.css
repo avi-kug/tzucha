@@ -500,3 +500,63 @@ div.dt-button-background {
     from { opacity: 0; }
     to { opacity: 1; }
 }
+
+/* Column Filter Icons and Dropdowns */
+.filter-icon {
+    cursor: pointer;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    margin-right: 5px;
+}
+
+.filter-icon:hover {
+    opacity: 0.8;
+}
+
+.filter-dropdown {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 280px;
+    z-index: 10000;
+}
+
+.filter-dropdown .form-label {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 8px;
+}
+
+.filter-dropdown .form-select,
+.filter-dropdown .form-control {
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 0.875rem;
+}
+
+.filter-dropdown .form-select:focus,
+.filter-dropdown .form-control:focus {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.filter-dropdown .btn {
+    font-size: 0.875rem;
+    padding: 5px 15px;
+}
+
+/* Highlight active filter icons */
+.filter-icon[style*="opacity: 1"] {
+    color: #007bff;
+}
+
+/* Responsive adjustments */
+@media (max-width: 992px) {
+    .filter-dropdown {
+        min-width: 250px;
+        padding: 10px;
+    }
+}

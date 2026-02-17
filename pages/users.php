@@ -149,6 +149,9 @@ include '../templates/header.php';
     <button class="tab-btn active" data-tab="users">משתמשים</button>
     <button class="tab-btn" data-tab="attempts">ניסיונות כניסה</button>
     <button class="tab-btn" data-tab="security-logs">לוגי אבטחה</button>
+    <?php if (auth_is_admin()): ?>
+    <button class="tab-btn" data-tab="system-monitor">ניטור מערכת</button>
+    <?php endif; ?>
 </div>
 
 <div class="tab-panel active" id="users-tab">
@@ -258,11 +261,12 @@ include '../templates/header.php';
                 <h5 class="mb-3">לוגי אבטחה</h5>
                 
                 <div class="row mb-3">
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label">סינון לפי סוג אירוע:</label>
                         <select id="eventTypeFilter" class="form-select">
                             <option value="">הכל</option>
                             <option value="LOGIN_SUCCESS">כניסה מוצלחת</option>
+                            <option value="LOGIN_SUCCESS_SAME_IP_TODAY">כניסה מאותו IP</option>
                             <option value="LOGIN_FAILED">כניסה נכשלה</option>
                             <option value="LOGIN_RATE_LIMIT">הגבלת קצב</option>
                             <option value="LOGIN_OTP_SENT">OTP נשלח</option>
@@ -271,19 +275,9 @@ include '../templates/header.php';
                             <option value="LOGOUT">יציאה</option>
                         </select>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-md-8">
                         <label class="form-label">חיפוש (משתמש/IP):</label>
                         <input type="text" id="logSearch" class="form-control" placeholder="הקלד לחיפוש...">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">בחר קובץ לוג:</label>
-                        <select id="logFileSelect" class="form-select">
-                            <option value="">טוען קבצים...</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2">
-                        <label class="form-label">&nbsp;</label>
-                        <button id="downloadLogBtn" class="btn btn-success w-100">הורד לוג</button>
                     </div>
                 </div>
 
@@ -316,6 +310,85 @@ include '../templates/header.php';
         </div>
     </div>
 </div>
+
+<?php if (auth_is_admin()): ?>
+<div class="tab-panel" id="system-monitor-tab">
+    <div id="system-monitor">
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">🖥️ ניטור מערכת בזמן אמת</h5>
+                    <div>
+                        <span class="badge bg-success" id="statusBadge">פעיל</span>
+                        <button class="btn btn-sm btn-primary" onclick="refreshMonitoring()">
+                            <i class="bi bi-arrow-clockwise"></i> רענן
+                        </button>
+                    </div>
+                </div>
+                <small class="text-muted">עודכן: <span id="lastMonitorUpdate">-</span></small>
+            </div>
+        </div>
+
+        <!-- Key Metrics -->
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-database fs-1 text-primary"></i>
+                        <h6 class="mt-2">מסד נתונים</h6>
+                        <div class="fs-3" id="dbStatus">-</div>
+                        <small class="text-muted" id="dbDetails">בודק...</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-hdd fs-1 text-success"></i>
+                        <h6 class="mt-2">מקום בדיסק</h6>
+                        <div class="fs-3" id="diskSpace">-</div>
+                        <small class="text-muted" id="diskDetails">בודק...</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-memory fs-1 text-info"></i>
+                        <h6 class="mt-2">זיכרון</h6>
+                        <div class="fs-3" id="memoryUsage">-</div>
+                        <small class="text-muted" id="memoryDetails">בודק...</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <i class="bi bi-activity fs-1 text-warning"></i>
+                        <h6 class="mt-2">פעילות</h6>
+                        <div class="fs-3" id="activityCount">-</div>
+                        <small class="text-muted">כניסות בשעה</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Health Checks -->
+        <div class="card">
+            <div class="card-body">
+                <h5 class="mb-3">📊 בדיקות מערכת</h5>
+                <div class="row" id="healthChecks">
+                    <div class="col-12 text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">טוען...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="modal fade" id="userModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
