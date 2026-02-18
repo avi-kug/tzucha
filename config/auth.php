@@ -42,7 +42,7 @@ function role_permissions($role) {
             return [];
         case 'viewer':
         default:
-            return ['home','people','alphon'];
+            return ['home','people','beit_neeman','alphon'];
     }
 }
 

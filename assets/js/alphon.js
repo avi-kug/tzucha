@@ -5,7 +5,7 @@
         }
         const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
         const table = $('#alphonTable').DataTable({
-            language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
+            language: { url: '../assets/js/datatables-he.json' },
             pageLength: 25,
             autoWidth: true,
             responsive: true,

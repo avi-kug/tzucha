@@ -128,7 +128,7 @@
             destroy: true,
             retrieve: true,
             language: {
-                url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json',
+                url: '../assets/js/datatables-he.json',
                 search: 'חיפוש:',
                 lengthMenu: 'הצג _MENU_ רשומות',
                 info: 'מציג _START_ עד _END_ מתוך _TOTAL_ רשומות',
@@ -643,7 +643,7 @@
             amarchalTable = $('#amarchalTable').DataTable({
                 destroy: true,
                 retrieve: true,
-                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
+                language: { url: '../assets/js/datatables-he.json' },
                 pageLength: 25,
                 autoWidth: false,
                 order: [[0, 'asc']],
@@ -712,7 +712,7 @@
             gizbarTable = $('#gizbarTable').DataTable({
                 destroy: true,
                 retrieve: true,
-                language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/he.json' },
+                language: { url: '../assets/js/datatables-he.json' },
                 pageLength: 25,
                 autoWidth: false,
                 order: [[0, 'asc']],
@@ -1371,9 +1371,100 @@ function showPersonDetailsModal(softwareId, personId, personName) {
                 supportsHtml += '</div>';
             }
             $('#supportsContent').html(supportsHtml);
+            
+            // Load children data
+            if (p && p.husband_id) {
+                loadChildrenData(p.husband_id);
+            } else {
+                $('#childrenCountBadge').text('0');
+                $('#childrenSummaryContent').html('<div class="text-center text-muted">לא נמצאו פרטי ילדים</div>');
+            }
         },
         error: function() {
             alert('שגיאה בטעינת הפרטים');
+        }
+    });
+}
+
+// Load children data for a parent
+function loadChildrenData(parentHusbandId) {
+    $.ajax({
+        url: 'children_api.php',
+        method: 'GET',
+        data: { 
+            action: 'get_by_parent',
+            parent_id: parentHusbandId
+        },
+        dataType: 'json',
+        success: function(data) {
+            if (data.success && data.children) {
+                const children = data.children;
+                const summary = data.summary;
+                
+                // Update badge
+                $('#childrenCountBadge').text(summary.total);
+                
+                // Build summary HTML
+                let html = '<div class="mb-3">';
+                html += '<h6><i class="bi bi-info-circle me-2"></i>סיכום</h6>';
+                html += '<div class="summary-stats">';
+                html += '<div class="stat-item">';
+                html += '<span class="stat-label">בנים:</span>';
+                html += '<span class="stat-value">' + summary.boys + '</span>';
+                html += '</div>';
+                html += '<div class="stat-item">';
+                html += '<span class="stat-label">בנות:</span>';
+                html += '<span class="stat-value">' + summary.girls + '</span>';
+                html += '</div>';
+                html += '<div class="stat-item">';
+                html += '<span class="stat-label">נשואים:</span>';
+                html += '<span class="stat-value">' + summary.married + '</span>';
+                html += '</div>';
+                html += '<div class="stat-item">';
+                html += '<span class="stat-label">סה"כ:</span>';
+                html += '<span class="stat-value">' + summary.total + '</span>';
+                html += '</div>';
+                html += '</div>';
+                html += '</div>';
+                
+                if (children.length > 0) {
+                    html += '<h6><i class="bi bi-list-ul me-2"></i>רשימת ילדים</h6>';
+                    html += '<div class="children-list">';
+                    
+                    children.forEach(function(child) {
+                        const statusClass = child.status === 'נשוי' ? 'married' : 'single';
+                        html += '<div class="child-item">';
+                        html += '<div class="child-info">';
+                        html += '<div class="child-name">' + escapeHtml(child.child_name) + '</div>';
+                        html += '<div class="child-details">';
+                        html += escapeHtml(child.gender || '') + ' | ';
+                        html += 'גיל: ' + (child.age || '-') + ' | ';
+                        if (child.birth_month && child.birth_year) {
+                            html += child.birth_month + ' ' + child.birth_year;
+                        }
+                        if (child.notes) {
+                            html += ' | ' + escapeHtml(child.notes);
+                        }
+                        html += '</div>';
+                        html += '</div>';
+                        html += '<span class="child-status ' + statusClass + '">' + escapeHtml(child.status || 'רווק') + '</span>';
+                        html += '</div>';
+                    });
+                    
+                    html += '</div>';
+                } else {
+                    html += '<div class="text-center text-muted">אין ילדים</div>';
+                }
+                
+                $('#childrenSummaryContent').html(html);
+            } else {
+                $('#childrenCountBadge').text('0');
+                $('#childrenSummaryContent').html('<div class="text-center text-muted">אין ילדים</div>');
+            }
+        },
+        error: function() {
+            $('#childrenCountBadge').text('0');
+            $('#childrenSummaryContent').html('<div class="text-center text-danger">שגיאה בטעינת פרטי ילדים</div>');
         }
     });
 }
@@ -1489,4 +1580,16 @@ function togglePersonDetailsEditMode(editMode) {
         $('#savePersonFromDetailsBtn').addClass('d-none');
         $('#cancelEditFromDetailsBtn').addClass('d-none');
     }
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    var map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
 }

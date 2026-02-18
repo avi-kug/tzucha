@@ -26,6 +26,23 @@
                         </div>
                     </div>
                     
+                    <!-- Children Info -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#childrenInfo">
+                                <i class="bi bi-people me-2"></i> פרטי ילדים
+                                <span class="badge bg-primary ms-2" id="childrenCountBadge">0</span>
+                            </button>
+                        </h2>
+                        <div id="childrenInfo" class="accordion-collapse collapse" data-bs-parent="#personDetailsAccordion">
+                            <div class="accordion-body">
+                                <div class="children-summary" id="childrenSummaryContent">
+                                    <div class="text-center text-muted">טוען פרטי ילדים...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <!-- Cash Donations -->
                     <div class="accordion-item">
                         <h2 class="accordion-header">

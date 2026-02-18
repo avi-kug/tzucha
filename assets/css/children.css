@@ -1,0 +1,194 @@
+/* Children and Beit Neeman specific styles */
+
+/* Loader and content visibility */
+.table-loader {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+    background: #f8f9fa;
+    border-radius: 0.5rem;
+}
+
+.loader-spinner {
+    text-align: center;
+}
+
+.loader-spinner .spinner-border {
+    width: 3rem;
+    height: 3rem;
+}
+
+.loader-spinner p {
+    margin-top: 1rem;
+    color: #6c757d;
+    font-size: 1.1rem;
+}
+
+.table-content-hidden {
+    display: none;
+}
+
+#children-tab .table-wrapper,
+#beit-neeman-tab .table-wrapper {
+    overflow-x: auto;
+}
+
+#childrenTable,
+#beitNeemanTable {
+    font-size: 0.9rem;
+}
+
+#childrenTable th,
+#childrenTable td,
+#beitNeemanTable th,
+#beitNeemanTable td {
+    white-space: nowrap;
+    padding: 0.5rem;
+}
+
+/* Modal form styling for children */
+#childModal .form-label,
+#beitNeemanModal .form-label {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+#childModal .form-control,
+#childModal .form-select,
+#beitNeemanModal .form-control,
+#beitNeemanModal .form-select {
+    font-size: 0.95rem;
+}
+
+/* Children summary in person modal */
+.children-summary {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-top: 1rem;
+}
+
+.children-summary h6 {
+    color: #495057;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+.children-summary .summary-stats {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.children-summary .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.children-summary .stat-label {
+    font-weight: 600;
+    color: #6c757d;
+}
+
+.children-summary .stat-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: #0d6efd;
+}
+
+.children-summary .children-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.children-summary .child-item {
+    padding: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.children-summary .child-item:last-child {
+    border-bottom: none;
+}
+
+.children-summary .child-info {
+    flex: 1;
+}
+
+.children-summary .child-name {
+    font-weight: 600;
+    color: #212529;
+}
+
+.children-summary .child-details {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+.children-summary .child-status {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.children-summary .child-status.married {
+    background: #d1e7dd;
+    color: #0f5132;
+}
+
+.children-summary .child-status.single {
+    background: #cfe2ff;
+    color: #084298;
+}
+
+/* Action buttons styling */
+#childrenActionBar button,
+#beitNeemanActionBar button {
+    margin-left: 0.5rem;
+}
+
+/* Table action buttons */
+.edit-child-btn,
+.delete-child-btn,
+.edit-bn-btn,
+.delete-bn-btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Sync button special styling */
+#syncBeitNeemanBtn {
+    background: #198754;
+    border-color: #198754;
+    color: white;
+}
+
+#syncBeitNeemanBtn:hover {
+    background: #157347;
+    border-color: #146c43;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    #childrenTable,
+    #beitNeemanTable {
+        font-size: 0.8rem;
+    }
+    
+    #childrenTable th,
+    #childrenTable td,
+    #beitNeemanTable th,
+    #beitNeemanTable td {
+        padding: 0.35rem;
+    }
+    
+    .children-summary .summary-stats {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}

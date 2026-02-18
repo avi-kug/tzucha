@@ -9,10 +9,13 @@ Options -Indexes
     Require all denied
 </Files>
 
-# Protect sensitive files
+# Protect sensitive files and .git directory
 <FilesMatch "^\.">
     Require all denied
 </FilesMatch>
+
+# Block access to .git directory (alternative method)
+RedirectMatch 404 /\.git
 
 <FilesMatch "(?i)(composer\.json|composer\.lock|database_setup\.sql|update_people_table.*\.sql|\.env|\.sql|\.log|\.bak|\.backup)$">
     Require all denied

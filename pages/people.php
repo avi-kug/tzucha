@@ -568,6 +568,7 @@ include '../templates/header.php';
 ?>
 
 <link rel="stylesheet" href="../assets/css/people.css">
+<link rel="stylesheet" href="../assets/css/children.css">
 <?php if (!empty($message)): ?>
 <!-- Summary Message Modal -->
 <div class="modal fade" id="messageModal" tabindex="-1" aria-labelledby="messageModalLabel" aria-hidden="true">
@@ -588,7 +589,7 @@ include '../templates/header.php';
 </div>
 <?php endif; ?>
 <?php
-$allowedTabs = ['full','amarchal','gizbar'];
+$allowedTabs = ['full','amarchal','gizbar','children'];
 $activeTab = isset($_GET['tab']) ? $_GET['tab'] : 'full';
 if (!in_array($activeTab, $allowedTabs, true)) { $activeTab = 'full'; }
 
@@ -611,7 +612,7 @@ foreach ($gizbarMapRows as $row) {
 
 <!-- Tabs Navigation -->
 <div class="tabs-nav">
-
+    <button class="tab-btn<?php echo ($activeTab==='children')?' active':''; ?>" data-tab="children">מאגר ילדים</button>
     <button class="tab-btn<?php echo ($activeTab==='amarchal')?' active':''; ?>" data-tab="amarchal">רשימת אמרכלים</button>
     <button class="tab-btn<?php echo ($activeTab==='gizbar')?' active':''; ?>" data-tab="gizbar">רשימת גזברים</button>
     <button class="tab-btn<?php echo ($activeTab==='full')?' active':''; ?>" data-tab="full">פרטים מלאים</button>
@@ -901,6 +902,62 @@ foreach ($gizbarMapRows as $row) {
         </div>
     </div>
     </div><!-- End gizbarTableContent -->
+</div>
+
+<!-- Children Tab -->
+<div class="tab-panel<?php echo ($activeTab==='children')?' active' : ''; ?>" id="children-tab">
+    <div class="table-loader" id="childrenTableLoader">
+        <div class="loader-spinner">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">טוען...</span>
+            </div>
+            <p class="mt-3">טוען נתונים...</p>
+        </div>
+    </div>
+    
+    <div class="table-content-hidden" id="childrenTableContent">
+    <div id="children">
+        <div class="card fixed-card">
+            <div class="card-body">
+                <div class="table-action-bar" id="childrenActionBar">
+                    <?php if ($canEdit): ?>
+                        <button type="button" class="btn btn-brand" id="addChildBtn">הוסף ילד חדש</button>
+                        <button type="button" class="btn btn-brand" data-bs-toggle="modal" data-bs-target="#importChildrenModal">ייבא אקסל</button>
+                    <?php endif; ?>
+                    <button type="button" class="btn btn-brand" id="exportChildrenBtn">ייצוא אקסל</button>
+                </div>
+                <div class="table-scroll">
+                    <div class="table-wrapper">
+                        <table id="childrenTable" class="table table-striped mb-0" style="width:100%">
+                            <thead>
+                            <tr>
+                                <th>שם משפחה</th>
+                                <th>שם הילד</th>
+                                <th>מין</th>
+                                <th>יום</th>
+                                <th>חודש</th>
+                                <th>שנה</th>
+                                <th>ת. לידה לועזי</th>
+                                <th>תעודת זהות</th>
+                                <th>גיל</th>
+                                <th>הערות</th>
+                                <th>סטטוס</th>
+                                <?php if ($canEdit): ?>
+                                <th>פעולות</th>
+                                <?php endif; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- DataTable will load content via AJAX -->
+                        </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="table-pagination"></div>
+            </div>
+        </div>
+    </div>
+    </div>
 </div>
 
 <!-- Modal for Add/Edit Person -->
@@ -1501,7 +1558,146 @@ foreach ($gizbarMapRows as $row) {
     </div>
 </div>
 
+<!-- Modal for Add/Edit Child -->
+<div class="modal fade" id="childModal" tabindex="-1" aria-labelledby="childModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="childModalLabel">הוסף/ערוך ילד</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="childForm">
+                    <input type="hidden" id="child_id" name="id">
+                    
+                    <div class="mb-3">
+                        <label for="parent_select" class="form-label">בחר הורה (לפי שם ומשפחה) <span class="text-danger">*</span></label>
+                        <select class="form-select" id="parent_select" name="parent_husband_id" required>
+                            <option value="">בחר...</option>
+                            <?php 
+                            $parents = $pdo->query("SELECT husband_id, full_name, family_name, first_name FROM people WHERE husband_id IS NOT NULL AND husband_id != '' ORDER BY family_name, first_name")->fetchAll(PDO::FETCH_ASSOC);
+                            foreach ($parents as $parent):
+                                $displayName = $parent['full_name'] ?: ($parent['family_name'] . ' ' . $parent['first_name']);
+                            ?>
+                                <option value="<?php echo htmlspecialchars($parent['husband_id'], ENT_QUOTES, 'UTF-8'); ?>">
+                                    <?php echo htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8'); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="child_name" class="form-label">שם הילד <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="child_name" name="child_name" required>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="gender" class="form-label">מין <span class="text-danger">*</span></label>
+                            <select class="form-select" id="gender" name="gender" required>
+                                <option value="">בחר...</option>
+                                <option value="זכר">זכר</option>
+                                <option value="נקבה">נקבה</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <label for="birth_day" class="form-label">יום לידה</label>
+                            <select class="form-select" id="birth_day" name="birth_day">
+                                <!-- Will be populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div class="col-md-5 mb-3">
+                            <label for="birth_month" class="form-label">חודש עברי</label>
+                            <select class="form-select" id="birth_month" name="birth_month">
+                                <option value="">בחר...</option>
+                                <option value="תשרי">תשרי</option>
+                                <option value="חשון">חשון</option>
+                                <option value="כסלו">כסלו</option>
+                                <option value="טבת">טבת</option>
+                                <option value="שבט">שבט</option>
+                                <option value="אדר">אדר</option>
+                                <option value="אדר א">אדר א</option>
+                                <option value="אדר ב">אדר ב</option>
+                                <option value="ניסן">ניסן</option>
+                                <option value="אייר">אייר</option>
+                                <option value="סיון">סיון</option>
+                                <option value="תמוז">תמוז</option>
+                                <option value="אב">אב</option>
+                                <option value="אלול">אלול</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="birth_year" class="form-label">שנה עברית</label>
+                            <select class="form-select" id="birth_year" name="birth_year">
+                                <!-- Will be populated by JavaScript -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <label for="calculated_age" class="form-label">גיל משוער</label>
+                            <input type="text" class="form-control" id="calculated_age" readonly style="background-color: #e9ecef;">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="birth_date_gregorian" class="form-label">תאריך לידה לועזי</label>
+                            <input type="date" class="form-control" id="birth_date_gregorian" name="birth_date_gregorian">
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <label for="child_id_field" class="form-label">תעודת זהות</label>
+                            <input type="text" class="form-control" id="child_id_field" name="child_id">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="child_status" class="form-label">סטטוס</label>
+                        <select class="form-select" id="child_status" name="status">
+                            <option value="רווק">רווק</option>
+                            <option value="מאורס">מאורס</option>
+                            <option value="נשוי">נשוי</option>
+                            <option value="גרוש">גרוש</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="child_notes" class="form-label">הערות</label>
+                        <textarea class="form-control" id="child_notes" name="notes" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+                <button type="button" class="btn btn-primary" id="saveChildBtn">שמור</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Children Modal -->
+<div class="modal fade" id="importChildrenModal" tabindex="-1" aria-labelledby="importChildrenModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importChildrenModalLabel">ייבוא ילדים מקובץ Excel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+            </div>
+            <div class="modal-body">
+                <input type="file" class="form-control" id="children_excel_file" accept=".xlsx,.xls">
+                <small class="text-muted d-block mt-2">עמודות נדרשות: שם משפחה, שם הילד, מין, יום, חודש, שנה, ת. לידה לועזי, תעודת זהות, הערות, סטטוס, ת.ז. הורה</small>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">בטל</button>
+                <button type="button" class="btn btn-brand" id="importChildrenFileBtn">ייבא</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php include '../templates/person_details_modal.php'; ?>
 
 <?php include '../templates/footer.php'; ?>
 <script src="../assets/js/people.js"></script>
+<script src="../assets/js/hebrew-dates.js"></script>
+<script src="../assets/js/children.js"></script>
