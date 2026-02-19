@@ -168,7 +168,7 @@
             <div class="form-group">
                 <label for="jsonUrl">כתובת URL של הטופס:</label>
                 <input type="text" id="jsonUrl" class="form-control" 
-                    value="https://matara.pro/nedarimplus/Forms/Manage.aspx?Action=GetJson&MosadId=25&ApiPassword=uf269&TofesId=3360&LastId=0&MaxId=500" 
+                    placeholder="https://matara.pro/nedarimplus/Forms/Manage.aspx?Action=GetJson&MosadId=XX&ApiPassword=XXXX&TofesId=XXXX&LastId=0&MaxId=500" 
                     style="direction: ltr;">
             </div>
             <div class="form-group">
