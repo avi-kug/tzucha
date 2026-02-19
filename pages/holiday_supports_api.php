@@ -174,7 +174,43 @@ try {
             break;
 
         case 'import_json':
-            $jsonUrl = $_POST['json_url'] ?? '';
+            // Load API credentials from .env
+            $envFile = __DIR__ . '/../.env';
+            $envVars = [];
+            if (file_exists($envFile)) {
+                $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                foreach ($lines as $line) {
+                    if (strpos(trim($line), '#') === 0) continue; // Skip comments
+                    $parts = explode('=', $line, 2);
+                    if (count($parts) === 2) {
+                        $envVars[trim($parts[0])] = trim($parts[1], '"');
+                    }
+                }
+            }
+            
+            // Get dynamic parameters from request
+            $lastId = $_POST['last_id'] ?? 0;
+            $maxId = $_POST['max_id'] ?? 500;
+            
+            // Build URL from .env
+            $baseUrl = $envVars['MATARA_FORMS_URL'] ?? '';
+            $mosadId = $envVars['MATARA_MOSAD_ID'] ?? '';
+            $apiPassword = $envVars['MATARA_API_PASSWORD'] ?? '';
+            $tofesId = $envVars['MATARA_TOFES_ID'] ?? '';
+            
+            if (empty($baseUrl) || empty($apiPassword)) {
+                throw new Exception('הגדרות API חסרות בקובץ .env');
+            }
+            
+            $jsonUrl = sprintf(
+                '%s?Action=GetJson&MosadId=%s&ApiPassword=%s&TofesId=%s&LastId=%d&MaxId=%d',
+                $baseUrl,
+                $mosadId,
+                $apiPassword,
+                $tofesId,
+                $lastId,
+                $maxId
+            );
             
             if (empty($jsonUrl)) {
                 throw new Exception('כתובת URL חסרה');

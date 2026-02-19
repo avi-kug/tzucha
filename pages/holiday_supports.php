@@ -165,11 +165,18 @@
             <span class="close">&times;</span>
         </div>
         <div class="modal-body">
-            <div class="form-group">
-                <label for="jsonUrl">כתובת URL של הטופס:</label>
-                <input type="text" id="jsonUrl" class="form-control" 
-                    placeholder="https://matara.pro/nedarimplus/Forms/Manage.aspx?Action=GetJson&MosadId=XX&ApiPassword=XXXX&TofesId=XXXX&LastId=0&MaxId=500" 
-                    style="direction: ltr;">
+            <p class="help-text">המערכת תייבא נתונים מהטופס המוגדר בהגדרות המערכת</p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="lastId">מזהה אחרון (LastId):</label>
+                    <input type="number" id="lastId" class="form-control" value="0" min="0">
+                    <small class="form-text">רשומות מהמזהה הזה ומעלה</small>
+                </div>
+                <div class="form-group">
+                    <label for="maxId">מקסימום רשומות (MaxId):</label>
+                    <input type="number" id="maxId" class="form-control" value="500" min="1" max="1000">
+                    <small class="form-text">מספר מקסימלי של רשומות לייבא</small>
+                </div>
             </div>
             <div class="form-group">
                 <button id="fetchJsonBtn" class="btn btn-primary">

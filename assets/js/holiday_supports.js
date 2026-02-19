@@ -15,16 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
     loadDonorsList();
     loadData();
-    loadJsonUrlFromStorage();
 });
-
-// Load saved JSON URL from localStorage
-function loadJsonUrlFromStorage() {
-    const savedUrl = localStorage.getItem('holidaySupportsJsonUrl');
-    if (savedUrl) {
-        document.getElementById('jsonUrl').value = savedUrl;
-    }
-}
 
 // Initialize Tabs
 function initializeTabs() {
@@ -492,23 +483,17 @@ function renderApprovedTable() {
 
 // Import from JSON
 async function importFromJson() {
-    const url = document.getElementById('jsonUrl').value;
+    const lastId = document.getElementById('lastId')?.value || 0;
+    const maxId = document.getElementById('maxId')?.value || 500;
     const statusDiv = document.getElementById('jsonImportStatus');
-    
-    if (!url) {
-        showNotification('אנא הזן כתובת URL', 'error');
-        return;
-    }
-    
-    // Save URL to localStorage for next time
-    localStorage.setItem('holidaySupportsJsonUrl', url);
     
     statusDiv.innerHTML = '<div class="alert alert-info">מייבא נתונים...</div>';
     
     try {
         const formData = new FormData();
         formData.append('action', 'import_json');
-        formData.append('json_url', url);
+        formData.append('last_id', lastId);
+        formData.append('max_id', maxId);
         
         const response = await fetch('holiday_supports_api.php', {
             method: 'POST',
