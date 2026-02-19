@@ -15,7 +15,16 @@ document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
     loadDonorsList();
     loadData();
+    loadJsonUrlFromStorage();
 });
+
+// Load saved JSON URL from localStorage
+function loadJsonUrlFromStorage() {
+    const savedUrl = localStorage.getItem('holidaySupportsJsonUrl');
+    if (savedUrl) {
+        document.getElementById('jsonUrl').value = savedUrl;
+    }
+}
 
 // Initialize Tabs
 function initializeTabs() {
@@ -490,6 +499,9 @@ async function importFromJson() {
         showNotification('אנא הזן כתובת URL', 'error');
         return;
     }
+    
+    // Save URL to localStorage for next time
+    localStorage.setItem('holidaySupportsJsonUrl', url);
     
     statusDiv.innerHTML = '<div class="alert alert-info">מייבא נתונים...</div>';
     
