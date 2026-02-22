@@ -1,7 +1,7 @@
-# Use official PHP image with Apache
-FROM php:8.2-apache
+# Use official PHP image with FPM
+FROM php:8.2-fpm
 
-# Install system dependencies and PHP extensions
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libjpeg62-turbo-dev \
@@ -9,9 +9,13 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     libonig-dev \
     libxml2-dev \
+    libicu-dev \
     nginx \
     supervisor \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure and install PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
     gd \
     pdo \
@@ -22,10 +26,10 @@ RUN apt-get update && apt-get install -y \
     xml \
     dom \
     intl \
-    bcmath \
-    fileinfo \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    bcmath
+
+# Verify GD extension is loaded
+RUN php -m | grep -i gd
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -33,11 +37,14 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy application files
-COPY . /var/www/html/
+# Copy composer files first
+COPY composer.json composer.lock ./
 
-# Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+# Install PHP dependencies with platform requirements ignored for build
+RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction --ignore-platform-req=ext-gd
+
+# Copy rest of application files
+COPY . .
 
 # Copy nginx config
 COPY nginx.conf /etc/nginx/nginx.conf
