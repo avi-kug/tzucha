@@ -3,6 +3,7 @@ FROM php:8.2-fpm
 
 # Install system dependencies required for PHP extensions
 RUN apt-get update && apt-get install -y \
+    pkg-config \
     libfreetype6-dev \
     libjpeg62-turbo-dev \
     libpng-dev \
