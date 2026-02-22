@@ -1,6 +1,19 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Security: Only show errors in development
+$isDevelopment = (getenv('ENVIRONMENT') === 'development' || 
+                  (isset($_SERVER['SERVER_NAME']) && 
+                   (strpos($_SERVER['SERVER_NAME'], 'localhost') !== false || 
+                    strpos($_SERVER['SERVER_NAME'], '127.0.0.1') !== false)));
+
+if ($isDevelopment) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+} else {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+}
+
 require_once '../config/db.php';
 require_once '../config/mailer.php';
 require_once '../config/auth.php';
@@ -148,24 +161,7 @@ if ($tablesReady && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?
         $stmt->execute([$username, $ip]);
         $loggedInToday = (int)$stmt->fetchColumn() > 0;
         
-        // Check if there was a manual logout after last successful login today
-        $manualLogoutAfterLogin = false;
         if ($loggedInToday) {
-            $stmt = $pdo->prepare('
-                SELECT 
-                    (SELECT MAX(attempted_at) FROM login_attempts WHERE username = ? AND ip_address = ? AND success = 1 AND DATE(attempted_at) = CURDATE()) as last_login,
-                    (SELECT MAX(attempted_at) FROM login_attempts WHERE username = ? AND ip_address = ? AND is_manual_logout = 1 AND DATE(attempted_at) = CURDATE()) as last_logout
-            ');
-            $stmt->execute([$username, $ip, $username, $ip]);
-            $times = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            // If there was a logout after the last login, require OTP
-            if ($times && $times['last_logout'] && $times['last_login']) {
-                $manualLogoutAfterLogin = strtotime($times['last_logout']) > strtotime($times['last_login']);
-            }
-        }
-
-        if ($loggedInToday && !$manualLogoutAfterLogin) {
             // Already logged in from this IP today AND no manual logout - skip OTP and login directly
             session_regenerate_id(true);
             $_SESSION['user_id'] = $user['id'];

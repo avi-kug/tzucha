@@ -16,7 +16,7 @@ if ($isProduction) {
 require_once '../config/db.php';
 require_once '../vendor/autoload.php';
 session_start();
-require_once '../config/auth.php';
+require_once '../config/auth_enhanced.php';
 auth_require_login($pdo);
 auth_require_permission('people');
 $canEdit = auth_role() !== 'viewer';
@@ -77,6 +77,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, 'people', count($rows), 5, 3600, 10000);
+        } catch (Exception $e) {
+            $_SESSION['message'] = $e->getMessage();
+            header('Location: people.php');
+            exit;
+        }
+
         $headersHe = [
             'אמרכל','גזבר','מזהה קופות','מזהה מלבושי כבוד','מס תורם','חתן הר\'ר','משפחה','שם','שם לדואר','שם ומשפחה ביחד',
             'תעודת זהות בעל','תעודת זהות אשה','כתובת','דואר ל','שכונה / אזור','קומה','עיר','טלפון',
@@ -90,6 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setRightToLeft(true);
         // Headers
         $colIndex = 1;
         foreach ($headersHe as $h) {
@@ -136,6 +146,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $rows = $pdo->query($query)->fetchAll(PDO::FETCH_ASSOC);
         }
 
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, $titlePrefix . 'export', count($rows), 5, 3600, 10000);
+        } catch (Exception $e) {
+            $_SESSION['message'] = $e->getMessage();
+            header('Location: people.php');
+            exit;
+        }
+
         $headersHe = [
             $isAmarchal ? 'אמרכל' : 'גזבר',
             'תעודת זהות בעל',
@@ -153,6 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setRightToLeft(true);
         $colIndex = 1;
         foreach ($headersHe as $h) {
             $sheet->setCellValueByColumnAndRow($colIndex++, 1, $h);
@@ -579,7 +599,7 @@ include '../templates/header.php';
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
             </div>
             <div class="modal-body">
-                <?php echo $message; ?>
+                <?php echo h($message); ?>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-brand" data-bs-dismiss="modal">סגור</button>
@@ -932,6 +952,7 @@ foreach ($gizbarMapRows as $row) {
                             <thead>
                             <tr>
                                 <th>שם משפחה</th>
+                                <th>שם האב</th>
                                 <th>שם הילד</th>
                                 <th>מין</th>
                                 <th>יום</th>

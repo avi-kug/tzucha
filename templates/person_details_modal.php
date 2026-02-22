@@ -7,7 +7,7 @@
                     <i class="bi bi-person-circle"></i> 
                     פרטים מלאים - <span id="personName"></span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" style="margin-left: 5px;"></button>
             </div>
             <div class="modal-body">
                 <div class="accordion" id="personDetailsAccordion">

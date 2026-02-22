@@ -1,12 +1,22 @@
 <?php
 // Don't set JSON header yet - export_excel needs different headers
 require_once '../config/db.php';
-require_once '../config/auth.php';
+require_once '../config/auth_enhanced.php';
 require_once '../repositories/SupportsRepository.php';
 require_once '../repositories/PeopleRepository.php';
 
 auth_require_login($pdo);
 auth_require_permission('supports');
+
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 60, 60); // 60 requests per minute
+    check_request_size();
+} catch (Exception $e) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    exit;
+}
 
 // Initialize repositories
 $supportsRepo = new SupportsRepository($pdo);
@@ -53,12 +63,30 @@ if ($action === 'export_excel') {
         $stmt->execute();
         $data = $stmt->fetchAll(PDO::FETCH_NUM);
         
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, 'approved_supports', count($data), 5, 3600, 10000);
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+        
         // Add data to sheet
         $sheet->fromArray($data, null, 'A2');
         
         $filename = 'תמיכות_שאושרו_' . date('Y-m-d') . '.xlsx';
         
     } elseif ($tab === 'summary') {
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, 'supports_summary', count($supports), 5, 3600, 10000);
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+        
         // Export summary table with calculations
         $sheet->setTitle('תמיכה');
         
@@ -83,6 +111,16 @@ if ($action === 'export_excel') {
                 $support['support_month'] ?? ''
             ];
         }
+        
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, 'supports_raw_data', count($supports), 5, 3600, 10000);
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+        
         
         $sheet->fromArray($data, null, 'A2');
         
@@ -317,6 +355,9 @@ try {
                 throw new Exception('Missing ID');
             }
             
+            // Prevent accidental double-delete
+            check_idempotency($pdo, 'delete_support', ['id' => $id], 10); // 10 seconds window
+            
             $supportsRepo->delete($id);
             echo json_encode(['success' => true, 'message' => 'נמחק בהצלחה']);
             break;
@@ -325,6 +366,9 @@ try {
             // Delete multiple support records
             $ids = $_POST['ids'] ?? [];
             if (!is_array($ids) || empty($ids)) {
+            // Prevent accidental bulk deletion
+            check_idempotency($pdo, 'delete_bulk_supports', ['ids' => $ids], 10); // 10 seconds window
+            
                 throw new Exception('No IDs provided');
             }
             
@@ -397,7 +441,7 @@ try {
             
             // Create temp directory if it doesn't exist
             if (!is_dir('../uploads/temp')) {
-                mkdir('../uploads/temp', 0777, true);
+                mkdir('../uploads/temp', 0755, true);
             }
             
             if (!move_uploaded_file($file['tmp_name'], $uploadPath)) {
@@ -852,6 +896,12 @@ try {
             if (!$supportId || !$supportMonth) {
                 throw new Exception('Missing required parameters');
             }
+            
+            // Prevent duplicate approvals
+            check_idempotency($pdo, 'approve_support', [
+                'support_id' => $supportId,
+                'support_month' => $supportMonth
+            ], 30); // 30 seconds window
             
             // Get support details
             $support = $supportsRepo->getById($supportId);

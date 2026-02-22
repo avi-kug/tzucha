@@ -17,9 +17,14 @@ if (session_status() === PHP_SESSION_NONE) {
 if (!headers_sent()) {
     header('X-Frame-Options: DENY');
     header('X-Content-Type-Options: nosniff');
+    header('X-XSS-Protection: 1; mode=block');
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
     header("Content-Security-Policy: default-src 'self' https:; script-src 'self' https: 'unsafe-inline' 'unsafe-eval'; style-src 'self' https: 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data: https:; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    // HSTS: Force HTTPS for 1 year (only on production with HTTPS)
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+    }
 }
 
 function auth_is_logged_in() {
@@ -80,6 +85,30 @@ function csrf_input() {
 function csrf_validate() {
     $token = $_POST['csrf_token'] ?? '';
     return !empty($token) && hash_equals($_SESSION['csrf_token'] ?? '', $token);
+}
+
+/**
+ * Escape HTML output to prevent XSS attacks
+ * Shorthand helper function for htmlspecialchars
+ * 
+ * @param mixed $string The string to escape
+ * @return string The escaped string
+ */
+function h($string) {
+    if ($string === null || $string === '') {
+        return '';
+    }
+    return htmlspecialchars((string)$string, ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * Escape and output HTML
+ * Convenience function that echoes escaped HTML
+ * 
+ * @param mixed $string The string to escape and output
+ */
+function e($string) {
+    echo h($string);
 }
 
 function password_policy_validate($password, &$error = '') {
@@ -226,4 +255,76 @@ function record_failed_login($username) {
 function reset_login_attempts($username) {
     $key = 'login_attempts_' . md5($username . ($_SERVER['REMOTE_ADDR'] ?? ''));
     unset($_SESSION[$key]);
+}
+
+/**
+ * Global API Rate Limiting - Protects against DDoS attacks
+ * 
+ * @param string $identifier Identifier (IP, user_id, etc.)
+ * @param int $max_requests Maximum requests allowed
+ * @param int $time_window Time window in seconds (default: 60 seconds)
+ * @return bool True if allowed, throws exception if rate limited
+ * @throws Exception When rate limit exceeded
+ */
+function check_api_rate_limit($identifier = null, $max_requests = 60, $time_window = 60) {
+    // Use IP address if no identifier provided
+    if ($identifier === null) {
+        $identifier = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    }
+    
+    $key = 'api_rate_limit_' . md5($identifier);
+    
+    if (!isset($_SESSION[$key])) {
+        $_SESSION[$key] = ['count' => 0, 'first_request' => time()];
+    }
+    
+    $data = $_SESSION[$key];
+    
+    // Reset if time window passed
+    if (time() - $data['first_request'] > $time_window) {
+        $_SESSION[$key] = ['count' => 1, 'first_request' => time()];
+        return true;
+    }
+    
+    // Check if exceeded
+    if ($data['count'] >= $max_requests) {
+        $wait_time = $time_window - (time() - $data['first_request']);
+        $seconds = ceil($wait_time);
+        
+        security_log('API_RATE_LIMIT', [
+            'identifier' => $identifier,
+            'endpoint' => $_SERVER['REQUEST_URI'] ?? 'unknown',
+            'requests' => $data['count'],
+            'wait_seconds' => $seconds
+        ]);
+        
+        http_response_code(429); // Too Many Requests
+        throw new Exception("יותר מדי בקשות. נסה שוב בעוד {$seconds} שניות.");
+    }
+    
+    $_SESSION[$key]['count']++;
+    return true;
+}
+
+/**
+ * Check request size to prevent large payload attacks
+ * 
+ * @param int $max_size Maximum size in bytes (default: 10MB)
+ * @throws Exception When request size exceeds limit
+ */
+function check_request_size($max_size = 10485760) { // 10MB default
+    $content_length = $_SERVER['CONTENT_LENGTH'] ?? 0;
+    
+    if ($content_length > $max_size) {
+        security_log('REQUEST_SIZE_EXCEEDED', [
+            'size' => $content_length,
+            'max' => $max_size,
+            'endpoint' => $_SERVER['REQUEST_URI'] ?? 'unknown'
+        ]);
+        
+        http_response_code(413); // Payload Too Large
+        throw new Exception("גודל הבקשה חורג מהמותר.");
+    }
+    
+    return true;
 }

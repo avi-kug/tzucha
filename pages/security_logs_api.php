@@ -17,6 +17,15 @@ if (!auth_is_admin()) {
     exit;
 }
 
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 100, 60); // Higher limit for admin
+    check_request_size();
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Fetch logs with filters
     $filters = [];

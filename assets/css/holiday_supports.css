@@ -671,6 +671,39 @@ textarea.form-control {
     text-align: right;
 }
 
+/* Search Dropdown */
+.form-group {
+    position: relative;
+}
+
+.search-dropdown {
+    position: absolute;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 1000;
+    width: calc(100% - 2px);
+    margin-top: 2px;
+}
+
+.search-dropdown-item {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #f0f0f0;
+    transition: background-color 0.2s;
+}
+
+.search-dropdown-item:hover {
+    background-color: #f5f5f5;
+}
+
+.search-dropdown-item:last-child {
+    border-bottom: none;
+}
+
 /* Print Styles */
 @media print {
     .supports-header,

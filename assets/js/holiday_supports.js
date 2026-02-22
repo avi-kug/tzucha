@@ -1,5 +1,8 @@
 // Holiday Supports JavaScript
 
+// Get CSRF token
+const csrfToken = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+
 let currentTab = 'support';
 let supportsData = [];
 let calculationsData = [];
@@ -150,17 +153,33 @@ function initializeEventListeners() {
     
     // Calculation Form Checkboxes
     const calcForm = document.getElementById('calculationForm');
-    calcForm.querySelector('[name="use_age"]').addEventListener('change', function() {
-        calcForm.querySelector('.age-range').style.display = this.checked ? 'block' : 'none';
+    calcForm.querySelector('[name="use_gender"]').addEventListener('change', function() {
+        calcForm.querySelector('.gender-input').style.display = this.checked ? 'block' : 'none';
+    });
+    calcForm.querySelector('[name="use_kids_age"]').addEventListener('change', function() {
+        calcForm.querySelector('.kids-age-range').style.display = this.checked ? 'block' : 'none';
     });
     calcForm.querySelector('[name="use_city"]').addEventListener('change', function() {
         calcForm.querySelector('.city-input').style.display = this.checked ? 'block' : 'none';
     });
-    calcForm.querySelector('[name="use_married"]').addEventListener('change', function() {
+    calcForm.querySelector('[name="use_married_years"]').addEventListener('change', function() {
         calcForm.querySelector('.married-range').style.display = this.checked ? 'block' : 'none';
     });
     calcForm.querySelector('[name="use_kids_count"]').addEventListener('change', function() {
         calcForm.querySelector('.kids-range').style.display = this.checked ? 'block' : 'none';
+    });
+    
+    // Calculation type change - update help text
+    document.getElementById('calculationType').addEventListener('change', function() {
+        const helpText = document.getElementById('amountHelp');
+        const type = this.value;
+        const helpTexts = {
+            'fixed': 'סכום קבוע יינתן לכל מי שעומד בתנאים',
+            'multiply': 'הסכום יוכפל במספר הפריטים (לדוגמא: 200 ש"ח * מספר נשואים)',
+            'per_item': 'הסכום יינתן לכל פריט בנפרד (לדוגמא: 50 ש"ח לכל ילד)',
+            'per_match': 'הסכום יינתן לכל התאמה (לדוגמא: 100 ש"ח לכל ילד בגיל 5-10)'
+        };
+        helpText.textContent = helpTexts[type] || '';
     });
     
     // Approve Selected Button
@@ -175,8 +194,95 @@ function initializeEventListeners() {
         updateSelectedSupports();
     });
     
-    // Donor Search
+    // Donor Search (in modal)
     document.getElementById('donorSearch').addEventListener('input', debounce(searchDonors, 300));
+    
+    // Donor Search Input (in support form) - autocomplete
+    document.getElementById('donorSearchInput').addEventListener('input', debounce(function() {
+        searchDonorsInModal(this.value);
+    }, 300));
+    
+    // Click outside to close dropdown
+    document.addEventListener('click', function(e) {
+        const dropdown = document.getElementById('donorSearchDropdown');
+        const input = document.getElementById('donorSearchInput');
+        if (!dropdown.contains(e.target) && e.target !== input) {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Number of kids change - generate kids form dynamically
+    document.getElementById('sumKids2').addEventListener('input', function() {
+        generateKidsForm(parseInt(this.value) || 0);
+    });
+    
+    // Allow manual entry of donor number
+    document.getElementById('donorNumber').addEventListener('blur', function() {
+        if (this.value && !document.getElementById('supportFirstName').value) {
+            loadFormDataForSupport(this.value);
+        }
+    });
+}
+
+// Generate kids form dynamically based on number of kids
+function generateKidsForm(numKids) {
+    const container = document.getElementById('kidsDataContainer');
+    container.innerHTML = '';
+    
+    for (let i = 1; i <= numKids; i++) {
+        const kidSection = document.createElement('div');
+        kidSection.className = 'kid-section';
+        kidSection.id = `kidSection${i}`;
+        kidSection.style.cssText = 'border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px;';
+        
+        kidSection.innerHTML = `
+            <h5>ילד/ה ${i}</h5>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="kidName${i}">שם:</label>
+                    <input type="text" id="kidName${i}" name="kid_name_${i}" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="kidStatus${i}">מין:</label>
+                    <select id="kidStatus${i}" name="kid_status_${i}" class="form-control">
+                        <option value="">בחר</option>
+                        <option value="זכר">זכר</option>
+                        <option value="נקבה">נקבה</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="kidBd${i}">תאריך לידה:</label>
+                    <input type="date" id="kidBd${i}" name="kid_bd_${i}" class="form-control">
+                </div>
+                <div class="form-group">
+                    <label for="age${i}">גיל:</label>
+                    <input type="number" id="age${i}" name="age_${i}" class="form-control" min="0" max="120" readonly>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(kidSection);
+        
+        // Add birthdate change listener to calculate age
+        const birthdateInput = document.getElementById(`kidBd${i}`);
+        birthdateInput.addEventListener('change', function() {
+            const age = calculateAge(this.value);
+            document.getElementById(`age${i}`).value = age;
+        });
+    }
+}
+
+// Calculate age from birthdate
+function calculateAge(birthdate) {
+    if (!birthdate) return '';
+    const today = new Date();
+    const birthDate = new Date(birthdate);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+    }
+    return age;
 }
 
 // Load Data
@@ -234,7 +340,7 @@ async function loadDonorsList() {
 
 function populateDonorsDropdown() {
     const select = document.getElementById('donorSelect');
-    select.innerHTML = '<option value="">-- הזנה ידנית --</option>';
+    select.innerHTML = '<option value="">-- בחר תורם --</option>';
     
     donorsList.forEach(donor => {
         const option = document.createElement('option');
@@ -246,14 +352,76 @@ function populateDonorsDropdown() {
     });
 }
 
+// Search donors in modal and show dropdown
+function searchDonorsInModal(query) {
+    const dropdown = document.getElementById('donorSearchDropdown');
+    const select = document.getElementById('donorSelect');
+    
+    if (!query || query.length < 2) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    
+    // Filter donors list
+    const filtered = donorsList.filter(donor => {
+        const searchStr = `${donor.donor_number} ${donor.first_name} ${donor.last_name}`.toLowerCase();
+        return searchStr.includes(query.toLowerCase());
+    });
+    
+    if (filtered.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    
+    // Display results
+    dropdown.innerHTML = '';
+    filtered.slice(0, 10).forEach(donor => {
+        const item = document.createElement('div');
+        item.className = 'search-dropdown-item';
+        item.textContent = `${donor.donor_number} - ${donor.last_name} ${donor.first_name}`;
+        item.style.cssText = 'padding: 8px; cursor: pointer; border-bottom: 1px solid #eee;';
+        
+        item.addEventListener('mouseenter', function() {
+            this.style.backgroundColor = '#f0f0f0';
+        });
+        item.addEventListener('mouseleave', function() {
+            this.style.backgroundColor = 'white';
+        });
+        item.addEventListener('click', function() {
+            // Fill donor number
+            document.getElementById('donorNumber').value = donor.donor_number;
+            document.getElementById('supportFirstName').value = donor.first_name;
+            document.getElementById('supportLastName').value = donor.last_name;
+            document.getElementById('donorSearchInput').value = `${donor.donor_number} - ${donor.last_name} ${donor.first_name}`;
+            
+            // Select in dropdown
+            for (let i = 0; i < select.options.length; i++) {
+                if (select.options[i].value === donor.donor_number) {
+                    select.selectedIndex = i;
+                    break;
+                }
+            }
+            
+            // Load full data
+            loadFormDataForSupport(donor.donor_number);
+            dropdown.style.display = 'none';
+        });
+        
+        dropdown.appendChild(item);
+    });
+    
+    dropdown.style.display = 'block';
+}
+
 async function loadDonorDataToForm() {
     const select = document.getElementById('donorSelect');
     const selectedOption = select.options[select.selectedIndex];
     
-    if (selectedOption.value) {
+    if (selectedOption && selectedOption.value) {
         document.getElementById('donorNumber').value = selectedOption.value;
         document.getElementById('supportFirstName').value = selectedOption.dataset.firstName || '';
         document.getElementById('supportLastName').value = selectedOption.dataset.lastName || '';
+        document.getElementById('donorSearchInput').value = `${selectedOption.value} - ${selectedOption.dataset.lastName} ${selectedOption.dataset.firstName}`;
         
         // Load extended form data if available
         await loadFormDataForSupport(selectedOption.value);
@@ -350,17 +518,30 @@ function renderCalculationsList() {
         const conditions = JSON.parse(calc.conditions || '{}');
         const conditionsList = [];
         
-        if (conditions.use_age) {
-            conditionsList.push(`גיל: ${conditions.age_from}-${conditions.age_to}`);
+        // Calculation type
+        const typeLabels = {
+            'fixed': 'סכום קבוע',
+            'multiply': 'כפל במספר',
+            'per_item': 'לכל פריט',
+            'per_match': 'לכל התאמה'
+        };
+        const calcType = typeLabels[calc.calculation_type || 'fixed'] || 'סכום קבוע';
+        
+        // Conditions
+        if (conditions.use_gender && conditions.gender) {
+            conditionsList.push(`מין: ${conditions.gender}`);
+        }
+        if (conditions.use_kids_age) {
+            conditionsList.push(`גיל ילדים: ${conditions.kids_age_from}-${conditions.kids_age_to}`);
         }
         if (conditions.use_city && conditions.city) {
             conditionsList.push(`עיר: ${conditions.city}`);
         }
-        if (conditions.use_married) {
+        if (conditions.use_married_years) {
             conditionsList.push(`נשואים: ${conditions.married_years_from}-${conditions.married_years_to} שנים`);
         }
         if (conditions.use_kids_count) {
-            conditionsList.push(`ילדים: ${conditions.kids_from}-${conditions.kids_to}`);
+            conditionsList.push(`מספר ילדים: ${conditions.kids_from}-${conditions.kids_to}`);
         }
         
         const card = document.createElement('div');
@@ -378,6 +559,7 @@ function renderCalculationsList() {
                 </div>
             </div>
             <div class="calculation-details">
+                <div><strong>סוג חישוב:</strong> ${calcType}</div>
                 <div><strong>תנאים:</strong> ${conditionsList.join(', ') || 'ללא תנאים'}</div>
                 <div><strong>סכום:</strong> ₪${formatNumber(calc.amount)}</div>
             </div>
@@ -494,6 +676,7 @@ async function importFromJson() {
         formData.append('action', 'import_json');
         formData.append('last_id', lastId);
         formData.append('max_id', maxId);
+        formData.append('csrf_token', csrfToken);
         
         const response = await fetch('holiday_supports_api.php', {
             method: 'POST',
@@ -540,6 +723,7 @@ async function importFromJson() {
 async function saveHolidaySupport() {
     const formData = new FormData(document.getElementById('holidaySupportForm'));
     formData.append('action', 'save_support');
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -569,6 +753,7 @@ async function saveHolidaySupport() {
 async function saveCalculation() {
     const formData = new FormData(document.getElementById('calculationForm'));
     formData.append('action', 'save_calculation');
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -605,12 +790,7 @@ function openHolidaySupportModal(supportId = null) {
     document.getElementById('donorSelect').value = '';
     
     // Clear all kids sections
-    for (let i = 1; i <= 16; i++) {
-        document.getElementById(`kidName${i}`).value = '';
-        document.getElementById(`kidStatus${i}`).value = '';
-        document.getElementById(`kidBd${i}`).value = '';
-        document.getElementById(`age${i}`).value = '';
-    }
+    document.getElementById('kidsDataContainer').innerHTML = '';
     
     if (supportId) {
         const support = supportsData.find(s => s.id == supportId);
@@ -652,8 +832,14 @@ async function loadFormDataForSupport(donorNumber) {
         });
         const result = await response.json();
         
+        console.log('API Response:', result); // Debug
+        
         if (result.success && result.data) {
             const form = result.data;
+            
+            console.log('Form data:', form); // Debug
+            console.log('Street:', form.street, 'City:', form.city); // Debug
+            console.log('Kids data:', form.kids_data, 'Num kids:', form.sum_kids2); // Debug
             
             // Populate extended fields
             document.getElementById('formId').value = form.id || '';
@@ -707,23 +893,62 @@ async function loadFormDataForSupport(donorNumber) {
             document.getElementById('ishur_3_').value = form.ishur_3_ || '';
             document.getElementById('ishur').value = form.ishur || '';
             
-            // Kids data
-            if (form.kids_data) {
-                try {
-                    const kidsData = typeof form.kids_data === 'string' ? JSON.parse(form.kids_data) : form.kids_data;
-                    kidsData.forEach((kid, index) => {
-                        if (index < 16) {
-                            const i = index + 1;
-                            document.getElementById(`kidName${i}`).value = kid.name || '';
-                            document.getElementById(`kidStatus${i}`).value = kid.status || '';
-                            document.getElementById(`kidBd${i}`).value = kid.birthdate || '';
-                            document.getElementById(`age${i}`).value = kid.age || '';
+            // Kids data - first generate kids form with correct number, then populate
+            const numKids = parseInt(form.sum_kids2) || 0;
+            console.log('Number of kids to generate:', numKids); // Debug
+            
+            if (numKids > 0) {
+                console.log('Generating kids form...'); // Debug
+                generateKidsForm(numKids);
+                
+                // Wait a moment for form generation, then populate
+                setTimeout(() => {
+                    console.log('Populating kids data...'); // Debug
+                    if (form.kids_data) {
+                        try {
+                            const kidsData = typeof form.kids_data === 'string' ? JSON.parse(form.kids_data) : form.kids_data;
+                            console.log('Parsed kids data:', kidsData); // Debug
+                            
+                            if (Array.isArray(kidsData)) {
+                                kidsData.forEach((kid, index) => {
+                                    if (index < numKids) {
+                                        const i = index + 1;
+                                        const nameField = document.getElementById(`kidName${i}`);
+                                        const statusField = document.getElementById(`kidStatus${i}`);
+                                        const bdField = document.getElementById(`kidBd${i}`);
+                                        const ageField = document.getElementById(`age${i}`);
+                                        
+                                        console.log(`Filling kid ${i}:`, kid); // Debug
+                                        
+                                        if (nameField) nameField.value = kid.name || '';
+                                        if (statusField) {
+                                            // Support both 'status' and 'gender' fields
+                                            let genderValue = kid.status || kid.gender || '';
+                                            // Convert gender enum to Hebrew
+                                            if (genderValue === 'male') genderValue = 'זכר';
+                                            if (genderValue === 'female') genderValue = 'נקבה';
+                                            statusField.value = genderValue;
+                                        }
+                                        if (bdField) bdField.value = kid.birthdate || '';
+                                        if (ageField) ageField.value = kid.age || '';
+                                    }
+                                });
+                                console.log('Kids data populated successfully'); // Debug
+                            } else {
+                                console.warn('Kids data is not an array:', kidsData); // Debug
+                            }
+                        } catch (e) {
+                            console.error('Error parsing kids data:', e);
                         }
-                    });
-                } catch (e) {
-                    console.error('Error parsing kids data:', e);
-                }
+                    } else {
+                        console.warn('No kids_data in form'); // Debug
+                    }
+                }, 100);
+            } else {
+                console.log('No kids to generate (numKids is 0)'); // Debug
             }
+        } else {
+            console.warn('No data or success=false in API response'); // Debug
         }
     } catch (error) {
         console.error('Error loading form data:', error);
@@ -737,7 +962,7 @@ function openCalculationModal(calcId = null) {
     document.getElementById('calculationId').value = calcId || '';
     
     // Hide all conditional inputs
-    document.querySelectorAll('.age-range, .city-input, .married-range, .kids-range').forEach(el => {
+    document.querySelectorAll('.gender-input, .kids-age-range, .city-input, .married-range, .kids-range').forEach(el => {
         el.style.display = 'none';
     });
     
@@ -747,21 +972,30 @@ function openCalculationModal(calcId = null) {
             const conditions = JSON.parse(calc.conditions || '{}');
             document.getElementById('calculationName').value = calc.name;
             document.getElementById('calculationAmount').value = calc.amount;
+            document.getElementById('calculationType').value = calc.calculation_type || 'fixed';
             
             // Set conditions
-            if (conditions.use_age) {
-                document.querySelector('[name="use_age"]').checked = true;
-                document.querySelector('.age-range').style.display = 'block';
-                document.querySelector('[name="age_from"]').value = conditions.age_from || '';
-                document.querySelector('[name="age_to"]').value = conditions.age_to || '';
+            if (conditions.use_gender) {
+                document.querySelector('[name="use_gender"]').checked = true;
+                document.querySelector('.gender-input').style.display = 'block';
+                if (conditions.gender) {
+                    const genderRadio = document.querySelector(`[name="gender"][value="${conditions.gender}"]`);
+                    if (genderRadio) genderRadio.checked = true;
+                }
+            }
+            if (conditions.use_kids_age) {
+                document.querySelector('[name="use_kids_age"]').checked = true;
+                document.querySelector('.kids-age-range').style.display = 'block';
+                document.querySelector('[name="kids_age_from"]').value = conditions.kids_age_from || '';
+                document.querySelector('[name="kids_age_to"]').value = conditions.kids_age_to || '';
             }
             if (conditions.use_city) {
                 document.querySelector('[name="use_city"]').checked = true;
                 document.querySelector('.city-input').style.display = 'block';
                 document.querySelector('[name="city"]').value = conditions.city || '';
             }
-            if (conditions.use_married) {
-                document.querySelector('[name="use_married"]').checked = true;
+            if (conditions.use_married_years) {
+                document.querySelector('[name="use_married_years"]').checked = true;
                 document.querySelector('.married-range').style.display = 'block';
                 document.querySelector('[name="married_years_from"]').value = conditions.married_years_from || '';
                 document.querySelector('[name="married_years_to"]').value = conditions.married_years_to || '';
@@ -795,6 +1029,7 @@ async function deleteSupport(id) {
     const formData = new FormData();
     formData.append('action', 'delete_support');
     formData.append('id', id);
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -826,6 +1061,7 @@ async function deleteCalculation(id) {
     const formData = new FormData();
     formData.append('action', 'delete_calculation');
     formData.append('id', id);
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -857,6 +1093,7 @@ async function approveSupport(id) {
     const formData = new FormData();
     formData.append('action', 'approve_supports');
     formData.append('ids[]', id);
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -909,6 +1146,7 @@ async function approveSelected() {
     const formData = new FormData();
     formData.append('action', 'approve_supports');
     selectedSupports.forEach(id => formData.append('ids[]', id));
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -940,6 +1178,7 @@ async function applyCalculations() {
     
     const formData = new FormData();
     formData.append('action', 'apply_calculations');
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -982,6 +1221,7 @@ async function searchDonors() {
     const formData = new FormData();
     formData.append('action', 'search_donors');
     formData.append('search', search);
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -1026,6 +1266,7 @@ async function selectDonor(donorNumber) {
     formData.append('action', 'link_donor');
     formData.append('form_id', formId);
     formData.append('donor_number', donorNumber);
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -1085,6 +1326,7 @@ async function deleteFormData(id) {
     const formData = new FormData();
     formData.append('action', 'delete_form');
     formData.append('id', id);
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {
@@ -1116,6 +1358,7 @@ async function deleteApprovedSupport(id) {
     const formData = new FormData();
     formData.append('action', 'delete_approved_support');
     formData.append('id', id);
+    formData.append('csrf_token', csrfToken);
     
     try {
         const response = await fetch('holiday_supports_api.php', {

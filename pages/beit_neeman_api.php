@@ -12,6 +12,16 @@ auth_require_login($pdo);
 auth_require_permission('people');
 $canEdit = auth_role() !== 'viewer';
 
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 60, 60);
+    check_request_size();
+} catch (Exception $e) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    exit;
+}
+
 header('Content-Type: application/json; charset=utf-8');
 
 // בדיקת CSRF

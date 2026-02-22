@@ -22,6 +22,15 @@ if (!auth_has_permission('people')) {
     exit;
 }
 
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 60, 60);
+    check_request_size();
+} catch (Exception $e) {
+    echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $software_id = $_GET['software_id'] ?? null;
 $person_id = $_GET['person_id'] ?? null;
 

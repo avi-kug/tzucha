@@ -26,6 +26,15 @@ if (!auth_has_permission('cash')) {
     exit;
 }
 
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 30, 60); // 30 requests per minute (external API)
+    check_request_size();
+} catch (Exception $e) {
+    echo json_encode(['error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ============================================================
 // Load .env
 // ============================================================

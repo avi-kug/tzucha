@@ -1,6 +1,19 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Security: Only show errors in development
+$isDevelopment = (getenv('ENVIRONMENT') === 'development' || 
+                  (isset($_SERVER['SERVER_NAME']) && 
+                   (strpos($_SERVER['SERVER_NAME'], 'localhost') !== false || 
+                    strpos($_SERVER['SERVER_NAME'], '127.0.0.1') !== false)));
+
+if ($isDevelopment) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+} else {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+}
+
 header('Content-Type: text/html; charset=UTF-8');
 mb_internal_encoding('UTF-8');
 
@@ -8,7 +21,10 @@ require_once '../config/db.php';
 require_once '../vendor/autoload.php';
 require_once '../config/auth.php';
 
-session_start();
+// Security: Require authentication and permissions
+auth_require_login($pdo);
+auth_require_permission('standing_orders');
+
 $message = '';
 if (isset($_SESSION['message'])) {
     $message = $_SESSION['message'];
@@ -34,6 +50,32 @@ function soNormalizeDate($value) {
     return $ts !== false ? date('Y-m-d', $ts) : null;
 }
 
+// Validate Excel file upload
+function validateExcelUpload($file) {
+    $allowedExt = ['xlsx','xls'];
+    $maxSize = 10 * 1024 * 1024; // 10MB
+    $name = $file['name'] ?? '';
+    $tmp = $file['tmp_name'] ?? '';
+    $size = $file['size'] ?? 0;
+    $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    if (!in_array($ext, $allowedExt, true)) {
+        throw new Exception('מותר להעלות רק קבצי Excel (.xlsx/.xls).');
+    }
+    if ($size > $maxSize) {
+        throw new Exception('הקובץ גדול מדי (מקסימום 10MB).');
+    }
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    $mime = $finfo->file($tmp);
+    $allowedMime = [
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-excel',
+        'application/octet-stream'
+    ];
+    if (!in_array($mime, $allowedMime, true)) {
+        throw new Exception('סוג הקובץ אינו נתמך.');
+    }
+}
+
 // ── POST actions ───────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (!csrf_validate()) {
@@ -45,7 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // ── ADD ────────────────────────────────────────────────────────────
     if ($action === 'add_koach' || $action === 'add_achim') {
+        // Whitelist validation for SQL injection prevention
+        $allowedTables = ['standing_orders_koach' => 'standing_orders_koach', 'standing_orders_achim' => 'standing_orders_achim'];
         $table = $action === 'add_koach' ? 'standing_orders_koach' : 'standing_orders_achim';
+        if (!isset($allowedTables[$table])) {
+            die('Invalid table');
+        }
+        $table = $allowedTables[$table];
         $stmt = $pdo->prepare("INSERT INTO $table (donation_date, full_name, amount, last4, method, notes, person_id) VALUES (?,?,?,?,?,?,?)");
         $stmt->execute([
             $_POST['donation_date'] ?? null,
@@ -63,7 +111,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // ── DELETE ─────────────────────────────────────────────────────────
     if ($action === 'delete_koach' || $action === 'delete_achim') {
+        // Whitelist validation for SQL injection prevention
+        $allowedTables = ['standing_orders_koach' => 'standing_orders_koach', 'standing_orders_achim' => 'standing_orders_achim'];
         $table = $action === 'delete_koach' ? 'standing_orders_koach' : 'standing_orders_achim';
+        if (!isset($allowedTables[$table])) {
+            die('Invalid table');
+        }
+        $table = $allowedTables[$table];
         $pdo->prepare("DELETE FROM $table WHERE id = ?")->execute([$_POST['id']]);
         $tab = $action === 'delete_koach' ? 'koach' : 'achim';
         header('Location: standing_orders.php?tab='.$tab);
@@ -72,7 +126,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // ── EDIT ──────────────────────────────────────────────────────────
     if ($action === 'edit_koach' || $action === 'edit_achim') {
+        // Whitelist validation for SQL injection prevention
+        $allowedTables = ['standing_orders_koach' => 'standing_orders_koach', 'standing_orders_achim' => 'standing_orders_achim'];
         $table = $action === 'edit_koach' ? 'standing_orders_koach' : 'standing_orders_achim';
+        if (!isset($allowedTables[$table])) {
+            die('Invalid table');
+        }
+        $table = $allowedTables[$table];
         $stmt = $pdo->prepare("UPDATE $table SET donation_date=?, full_name=?, amount=?, last4=?, method=?, notes=? WHERE id=?");
         $stmt->execute([
             $_POST['donation_date'] ?? null,
@@ -90,7 +150,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // ── TOGGLE ACTIVE SO ──────────────────────────────────────────────
     if ($action === 'toggle_active_so') {
+        // Whitelist validation for SQL injection prevention
+        $allowedFields = ['active_so_koach' => 'active_so_koach', 'active_so_achim' => 'active_so_achim'];
         $field = $_POST['so_type'] === 'koach' ? 'active_so_koach' : 'active_so_achim';
+        if (!isset($allowedFields[$field])) {
+            die('Invalid field');
+        }
+        $field = $allowedFields[$field];
         $val = (int)$_POST['active_val'];
         $pdo->prepare("UPDATE people SET $field = ? WHERE id = ?")->execute([$val, $_POST['person_id']]);
         header('Location: standing_orders.php?tab=alphon');
@@ -99,9 +165,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // ── IMPORT ────────────────────────────────────────────────────────
     if ($action === 'import_koach' || $action === 'import_achim') {
+        // Whitelist validation for SQL injection prevention
+        $allowedTables = ['standing_orders_koach' => 'standing_orders_koach', 'standing_orders_achim' => 'standing_orders_achim'];
         $table = $action === 'import_koach' ? 'standing_orders_koach' : 'standing_orders_achim';
+        if (!isset($allowedTables[$table])) {
+            die('Invalid table');
+        }
+        $table = $allowedTables[$table];
         if (isset($_FILES['excel_file']) && $_FILES['excel_file']['error'] === UPLOAD_ERR_OK) {
             try {
+                // Validate uploaded file
+                validateExcelUpload($_FILES['excel_file']);
+                
                 $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($_FILES['excel_file']['tmp_name']);
                 if (method_exists($reader, 'setReadDataOnly')) $reader->setReadDataOnly(true);
                 $spreadsheet = $reader->load($_FILES['excel_file']['tmp_name']);
@@ -130,7 +205,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
     // ── EXPORT ────────────────────────────────────────────────────────
     if ($action === 'export_koach' || $action === 'export_achim') {
+        // Whitelist validation for SQL injection prevention
+        $allowedTables = ['standing_orders_koach' => 'standing_orders_koach', 'standing_orders_achim' => 'standing_orders_achim'];
         $table = $action === 'export_koach' ? 'standing_orders_koach' : 'standing_orders_achim';
+        if (!isset($allowedTables[$table])) {
+            die('Invalid table');
+        }
+        $table = $allowedTables[$table];
         $label = $action === 'export_koach' ? 'כח_הרבים' : 'אחים_לחסד';
 
         $filterParts = []; $filterParams = [];
@@ -146,6 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setRightToLeft(true);
         $headers = ['תאריך תרומה','שם ומשפחה','סכום','4 ספרות אחרונות','אמצעי','הערות'];
         foreach ($headers as $i => $h) $sheet->setCellValueByColumnAndRow($i+1, 1, $h);
         $r = 2;
@@ -216,7 +298,7 @@ include '../templates/header.php';
 <?php if ($message): ?>
 <div class="modal fade" id="messageModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
 <div class="modal-header"><h5 class="modal-title">הודעה</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-<div class="modal-body"><?php echo $message; ?></div>
+<div class="modal-body"><?php echo h($message); ?></div>
 <div class="modal-footer"><button class="btn btn-brand" data-bs-dismiss="modal">סגור</button></div>
 </div></div></div>
 <?php endif; ?>

@@ -4,6 +4,15 @@ require_once '../config/db.php';
 require_once '../config/auth.php';
 auth_require_login($pdo);
 
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 60, 60);
+    check_request_size();
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    exit;
+}
+
 $action = $_GET['action'] ?? '';
 
 if ($action === 'history') {

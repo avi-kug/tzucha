@@ -66,7 +66,7 @@ $(document).ready(function() {
         tbody.empty();
         
         if (children.length === 0) {
-            tbody.append('<tr><td colspan="' + (canEdit ? '12' : '11') + '" class="text-center">אין ילדים להצגה</td></tr>');
+            tbody.append('<tr><td colspan="' + (canEdit ? '13' : '12') + '" class="text-center">אין ילדים להצגה</td></tr>');
             return;
         }
         
@@ -90,6 +90,7 @@ $(document).ready(function() {
             }
             
             row.append(`<td>${escapeHtml(child.parent_family_name || '')}</td>`);
+            row.append(`<td>${escapeHtml(child.parent_first_name || '')}</td>`);
             row.append(`<td>${escapeHtml(child.child_name || '')}</td>`);
             row.append(`<td>${escapeHtml(child.gender || '')}</td>`);
             row.append(`<td>${dayDisplay}</td>`);
@@ -120,7 +121,7 @@ $(document).ready(function() {
             language: {
                 url: '../assets/js/datatables-he.json'
             },
-            order: [[0, 'asc'], [1, 'asc']],
+            order: [[0, 'asc'], [2, 'asc']],
             pageLength: 50
         });
     }

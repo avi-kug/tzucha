@@ -1,6 +1,18 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Security: Only show errors in development
+$isDevelopment = (getenv('ENVIRONMENT') === 'development' || 
+                  (isset($_SERVER['SERVER_NAME']) && 
+                   (strpos($_SERVER['SERVER_NAME'], 'localhost') !== false || 
+                    strpos($_SERVER['SERVER_NAME'], '127.0.0.1') !== false)));
+
+if ($isDevelopment) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+} else {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 0);
+    ini_set('log_errors', 1);
+}
 
 // Increase limits for large reports
 ini_set('memory_limit', '1024M'); // 1GB for very large reports

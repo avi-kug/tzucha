@@ -203,6 +203,17 @@
                     <label for="calculationName">שם החישוב:</label>
                     <input type="text" id="calculationName" name="name" class="form-control" required>
                 </div>
+                
+                <div class="form-group">
+                    <label for="calculationType">סוג חישוב:</label>
+                    <select id="calculationType" name="calculation_type" class="form-control" required>
+                        <option value="fixed">סכום קבוע</option>
+                        <option value="multiply">כפל במספר (לדוגמא: מספר נשואים)</option>
+                        <option value="per_item">סכום לכל פריט (לדוגמא: לכל ילד)</option>
+                        <option value="per_match">סכום לכל התאמה (לדוגמא: לכל ילד בגיל מסויים)</option>
+                    </select>
+                    <small class="form-text">בחר איך לחשב את הסכום</small>
+                </div>
 
                 <div class="form-section">
                     <h4>קטגוריות לחישוב</h4>
@@ -213,16 +224,25 @@
                             <input type="checkbox" name="use_gender" value="1">
                             מין
                         </label>
+                        <div class="gender-input" style="display: none; margin-right: 20px;">
+                            <label>
+                                <input type="radio" name="gender" value="זכר"> זכר
+                            </label>
+                            <label>
+                                <input type="radio" name="gender" value="נקבה"> נקבה
+                            </label>
+                        </div>
                     </div>
 
                     <div class="form-group">
                         <label>
-                            <input type="checkbox" name="use_age" value="1">
-                            גיל
+                            <input type="checkbox" name="use_kids_age" value="1">
+                            גיל ילדים
                         </label>
-                        <div class="age-range" style="display: none; margin-right: 20px;">
-                            <label>גיל מ: <input type="number" name="age_from" min="0" max="120"></label>
-                            <label>גיל עד: <input type="number" name="age_to" min="0" max="120"></label>
+                        <div class="kids-age-range" style="display: none; margin-right: 20px;">
+                            <label>גיל מ: <input type="number" name="kids_age_from" min="0" max="120"></label>
+                            <label>גיל עד: <input type="number" name="kids_age_to" min="0" max="120"></label>
+                            <small class="form-text">חישוב יחול על ילדים בטווח גיל זה</small>
                         </div>
                     </div>
 
@@ -238,12 +258,13 @@
 
                     <div class="form-group">
                         <label>
-                            <input type="checkbox" name="use_married" value="1">
-                            נשואים
+                            <input type="checkbox" name="use_married_years" value="1">
+                            נשואים לפי שנים מהחתונה
                         </label>
                         <div class="married-range" style="display: none; margin-right: 20px;">
                             <label>שנים מהחתונה מ: <input type="number" name="married_years_from" min="0" max="50"></label>
                             <label>שנים מהחתונה עד: <input type="number" name="married_years_to" min="0" max="50"></label>
+                            <small class="form-text">לדוגמא: עד 3 שנים, בין 3-9 שנים, 9+ שנים</small>
                         </div>
                     </div>
 
@@ -260,8 +281,9 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="calculationAmount">סכום תמיכה:</label>
+                    <label for="calculationAmount">סכום לחישוב:</label>
                     <input type="number" id="calculationAmount" name="amount" class="form-control" step="0.01" min="0" required>
+                    <small class="form-text" id="amountHelp">סכום יחושב לפי סוג החישוב שנבחר למעלה</small>
                 </div>
 
                 <div class="form-actions">
@@ -309,9 +331,14 @@
                 <div class="form-section">
                     <h4>בחירת תורם</h4>
                     <div class="form-group">
-                        <label for="donorSelect">בחר/י תורם מהרשימה:</label>
-                        <select id="donorSelect" class="form-control">
-                            <option value="">-- הזנה ידנית --</option>
+                        <label for="donorSearchInput">חפש תורם:</label>
+                        <input type="text" id="donorSearchInput" class="form-control" placeholder="הקלד מספר תורם או שם לחיפוש...">
+                        <div id="donorSearchDropdown" class="search-dropdown" style="display: none;"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="donorSelect">או בחר מרשימה:</label>
+                        <select id="donorSelect" class="form-control" size="8" style="height: 200px;">
+                            <option value="">-- בחר תורם --</option>
                         </select>
                         <button type="button" id="loadDonorDataBtn" class="btn btn-secondary btn-sm" style="margin-top: 10px;">טען נתוני תורם</button>
                     </div>
@@ -464,30 +491,9 @@
                 <!-- פרטי ילדים -->
                 <div class="form-section">
                     <h4>פרטי הילדים בבית</h4>
+                    <p class="help-text">הילדים יתמלאו אוטומטית לפי מספר הילדים בבית</p>
                     <div id="kidsDataContainer">
-                        <?php for ($i = 1; $i <= 16; $i++): ?>
-                        <div class="kid-section" id="kidSection<?php echo $i; ?>" style="border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
-                            <h5>ילד/ה <?php echo $i; ?></h5>
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label for="kidName<?php echo $i; ?>">שם:</label>
-                                    <input type="text" id="kidName<?php echo $i; ?>" name="kid_name_<?php echo $i; ?>" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label for="kidStatus<?php echo $i; ?>">סטטוס:</label>
-                                    <input type="text" id="kidStatus<?php echo $i; ?>" name="kid_status_<?php echo $i; ?>" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label for="kidBd<?php echo $i; ?>">תאריך לידה:</label>
-                                    <input type="date" id="kidBd<?php echo $i; ?>" name="kid_bd_<?php echo $i; ?>" class="form-control">
-                                </div>
-                                <div class="form-group">
-                                    <label for="age<?php echo $i; ?>">גיל:</label>
-                                    <input type="number" id="age<?php echo $i; ?>" name="age_<?php echo $i; ?>" class="form-control" min="0" max="120">
-                                </div>
-                            </div>
-                        </div>
-                        <?php endfor; ?>
+                        <!-- Kids will be generated dynamically by JavaScript -->
                     </div>
                 </div>
 

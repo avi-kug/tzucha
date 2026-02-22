@@ -1,16 +1,35 @@
 <?php
 // Don't set JSON header yet - export_excel needs different headers
 require_once '../config/db.php';
-require_once '../config/auth.php';
+require_once '../config/auth_enhanced.php';
 require_once '../repositories/PeopleRepository.php';
 
 auth_require_login($pdo);
 auth_require_permission('supports');
 
-$peopleRepo = new PeopleRepository($pdo);
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 60, 60); // 60 requests per minute
+    check_request_size();
+} catch (Exception $e) {
+    header('Content-Type: application/json');
+    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    exit;
+}
 
-// Get the action
+// CSRF Protection for mutating actions
+$mutatingActions = ['save_calculation', 'delete_calculation', 'link_donor', 'search_donors', 'save_support', 'delete_support', 'delete_form', 'delete_approved_support', 'import_json', 'approve_support', 'calculate_support'];
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
+
+if (in_array($action, $mutatingActions) && $_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!csrf_validate()) {
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'פג תוקף הטופס, נסה שוב.']);
+        exit;
+    }
+}
+
+$peopleRepo = new PeopleRepository($pdo);
 
 // Handle export_excel BEFORE setting JSON header
 if ($action === 'export_excel') {
@@ -24,6 +43,7 @@ if ($action === 'export_excel') {
     // Create new Spreadsheet
     $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
     $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setRightToLeft(true);
     
     $filename = 'holiday_supports_export_' . date('Y-m-d') . '.xlsx';
     
@@ -48,6 +68,16 @@ if ($action === 'export_excel') {
             ORDER BY created_at DESC
         ");
         $data = $stmt->fetchAll(PDO::FETCH_NUM);
+        
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, 'holiday_supports', count($data), 5, 3600, 10000);
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+        
         $sheet->fromArray($data, null, 'A2');
         
         $filename = 'תמיכות_חג_' . date('Y-m-d') . '.xlsx';
@@ -72,6 +102,16 @@ if ($action === 'export_excel') {
             ORDER BY approved_at DESC
         ");
         $data = $stmt->fetchAll(PDO::FETCH_NUM);
+        
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, 'holiday_approved_supports', count($data), 5, 3600, 10000);
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+        
         $sheet->fromArray($data, null, 'A2');
         
         $filename = 'תמיכות_חג_שאושרו_' . date('Y-m-d') . '.xlsx';
@@ -105,6 +145,16 @@ if ($action === 'export_excel') {
             ORDER BY hf.created_date DESC
         ");
         $data = $stmt->fetchAll(PDO::FETCH_NUM);
+        
+        // Export Throttling Protection
+        try {
+            check_export_throttle($pdo, 'holiday_forms_data', count($data), 5, 3600, 10000);
+        } catch (Exception $e) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            exit;
+        }
+        
         $sheet->fromArray($data, null, 'A2');
         
         $filename = 'טפסים_חג_' . date('Y-m-d') . '.xlsx';
@@ -368,7 +418,7 @@ try {
                                 created_at, updated_at
                             ) VALUES (
                                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                 ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                 NOW(), NOW()
                             )
@@ -468,13 +518,17 @@ try {
         case 'save_calculation':
             $id = $_POST['id'] ?? null;
             $name = $_POST['name'] ?? '';
+            $calculationType = $_POST['calculation_type'] ?? 'fixed';
+            
+            // Conditions
             $useGender = isset($_POST['use_gender']) ? 1 : 0;
-            $useAge = isset($_POST['use_age']) ? 1 : 0;
-            $ageFrom = $_POST['age_from'] ?? null;
-            $ageTo = $_POST['age_to'] ?? null;
+            $gender = $_POST['gender'] ?? '';
+            $useKidsAge = isset($_POST['use_kids_age']) ? 1 : 0;
+            $kidsAgeFrom = $_POST['kids_age_from'] ?? null;
+            $kidsAgeTo = $_POST['kids_age_to'] ?? null;
             $useCity = isset($_POST['use_city']) ? 1 : 0;
             $city = $_POST['city'] ?? '';
-            $useMarried = isset($_POST['use_married']) ? 1 : 0;
+            $useMarriedYears = isset($_POST['use_married_years']) ? 1 : 0;
             $marriedYearsFrom = $_POST['married_years_from'] ?? null;
             $marriedYearsTo = $_POST['married_years_to'] ?? null;
             $useKidsCount = isset($_POST['use_kids_count']) ? 1 : 0;
@@ -484,12 +538,13 @@ try {
 
             $conditions = json_encode([
                 'use_gender' => $useGender,
-                'use_age' => $useAge,
-                'age_from' => $ageFrom,
-                'age_to' => $ageTo,
+                'gender' => $gender,
+                'use_kids_age' => $useKidsAge,
+                'kids_age_from' => $kidsAgeFrom,
+                'kids_age_to' => $kidsAgeTo,
                 'use_city' => $useCity,
                 'city' => $city,
-                'use_married' => $useMarried,
+                'use_married_years' => $useMarriedYears,
                 'married_years_from' => $marriedYearsFrom,
                 'married_years_to' => $marriedYearsTo,
                 'use_kids_count' => $useKidsCount,
@@ -500,16 +555,16 @@ try {
             if ($id) {
                 $stmt = $pdo->prepare("
                     UPDATE holiday_calculations 
-                    SET name = ?, conditions = ?, amount = ?, updated_at = NOW()
+                    SET name = ?, calculation_type = ?, conditions = ?, amount = ?, updated_at = NOW()
                     WHERE id = ?
                 ");
-                $stmt->execute([$name, $conditions, $amount, $id]);
+                $stmt->execute([$name, $calculationType, $conditions, $amount, $id]);
             } else {
                 $stmt = $pdo->prepare("
-                    INSERT INTO holiday_calculations (name, conditions, amount, created_at, updated_at)
-                    VALUES (?, ?, ?, NOW(), NOW())
+                    INSERT INTO holiday_calculations (name, calculation_type, conditions, amount, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, NOW(), NOW())
                 ");
-                $stmt->execute([$name, $conditions, $amount]);
+                $stmt->execute([$name, $calculationType, $conditions, $amount]);
                 $id = $pdo->lastInsertId();
             }
 
@@ -881,6 +936,10 @@ try {
 
         case 'delete_support':
             $id = $_POST['id'] ?? 0;
+            
+            // Prevent accidental double-delete
+            check_idempotency($pdo, 'delete_holiday_support', ['id' => $id], 10); // 10 seconds window
+            
             $stmt = $pdo->prepare("DELETE FROM holiday_supports WHERE id = ?");
             $stmt->execute([$id]);
             echo json_encode(['success' => true]);
@@ -915,17 +974,103 @@ try {
 
         case 'get_form_by_donor':
             $donorNumber = $_GET['donor_number'] ?? '';
+            
+            // Get form data
             $stmt = $pdo->prepare("SELECT * FROM holiday_forms WHERE donor_number = ? ORDER BY created_at DESC LIMIT 1");
             $stmt->execute([$donorNumber]);
             $form = $stmt->fetch(PDO::FETCH_ASSOC);
-            echo json_encode(['success' => true, 'data' => $form]);
+            
+            // Get person data for address and city
+            $stmt = $pdo->prepare("SELECT address, city, full_name, first_name, family_name, husband_id FROM people WHERE donor_number = ? LIMIT 1");
+            $stmt->execute([$donorNumber]);
+            $person = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Merge person data into form if not already present
+            if ($person && $form) {
+                // Use person data if form data is empty
+                $form['street'] = $form['street'] ?: ($person['address'] ?? '');
+                $form['city'] = $form['city'] ?: ($person['city'] ?? '');
+                $form['full_name'] = $form['full_name'] ?: ($person['full_name'] ?? '');
+            } elseif ($person && !$form) {
+                // Create basic form structure from person data
+                $form = [
+                    'street' => $person['address'] ?? '',
+                    'city' => $person['city'] ?? '',
+                    'full_name' => $person['full_name'] ?? '',
+                    'donor_number' => $donorNumber
+                ];
+            }
+            
+            // Get kids data from holiday_form_kids
+            $kids = [];
+            if ($form && isset($form['id'])) {
+                // If we have a form_id, use it
+                $stmt = $pdo->prepare("
+                    SELECT name, status, birthdate, age, gender 
+                    FROM holiday_form_kids 
+                    WHERE form_id = ? 
+                    ORDER BY id
+                ");
+                $stmt->execute([$form['id']]);
+                $kids = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+            
+            // If no kids found via form_id, try to get from main children table
+            if (empty($kids) && $person && !empty($person['husband_id'])) {
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        child_name as name,
+                        CASE 
+                            WHEN gender = '???' THEN 'זכר'
+                            WHEN gender = '????' THEN 'נקבה'
+                            ELSE gender
+                        END as status,
+                        birth_date_gregorian as birthdate,
+                        YEAR(CURDATE()) - birth_year as age,
+                        CASE 
+                            WHEN gender = '???' THEN 'male'
+                            WHEN gender = '????' THEN 'female'
+                            ELSE 'unknown'
+                        END as gender
+                    FROM children 
+                    WHERE parent_husband_id = ?
+                    ORDER BY birth_year DESC, birth_month DESC, birth_day DESC
+                ");
+                $stmt->execute([$person['husband_id']]);
+                $kids = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+            
+            // Add kids data to form if we found any
+            if (!empty($kids)) {
+                $form['kids_data'] = json_encode($kids);
+                $form['sum_kids2'] = count($kids);
+            }
+            
+            echo json_encode([
+                'success' => true, 
+                'data' => $form, 
+                'debug' => [
+                    'person' => $person, 
+                    'form_id' => $form['id'] ?? null,
+                    'kids_count' => count($kids),
+                    'has_husband_id' => !empty($person['husband_id'])
+                ]
+            ]);
             break;
 
         case 'delete_form':
             $id = $_POST['id'] ?? 0;
+            
+            // Prevent accidental double-delete
+            check_idempotency($pdo, 'delete_holiday_form', ['id' => $id], 10); // 10 seconds window
+            
             $stmt = $pdo->prepare("DELETE FROM holiday_forms WHERE id = ?");
             $stmt->execute([$id]);
             echo json_encode(['success' => true]);
+            
+            // Prevent accidental double-delete
+            check_idempotency($pdo, 'delete_approved_holiday_support', ['id' => $id], 10); // 10 seconds window
+            
             break;
 
         case 'delete_approved_support':
@@ -959,20 +1104,39 @@ try {
 
                 foreach ($calculations as $calc) {
                     $conditions = json_decode($calc['conditions'], true);
+                    $calculationType = $calc['calculation_type'] ?? 'fixed';
+                    $amount = floatval($calc['amount']);
                     $match = true;
+                    $multiplier = 1;
+                    $matchCount = 0;
 
-                    // Check age conditions
-                    if ($conditions['use_age']) {
-                        // Check kids ages
-                        $ages = array_filter(explode(',', $form['kids_ages'] ?? ''));
-                        $ageMatch = false;
-                        foreach ($ages as $age) {
-                            if ($age >= $conditions['age_from'] && $age <= $conditions['age_to']) {
-                                $ageMatch = true;
-                                break;
+                    // Check gender conditions
+                    if ($conditions['use_gender'] && !empty($conditions['gender'])) {
+                        $genders = array_filter(explode(',', $form['kids_genders'] ?? ''));
+                        $genderMatch = false;
+                        foreach ($genders as $gender) {
+                            if (trim($gender) === $conditions['gender']) {
+                                $genderMatch = true;
+                                $matchCount++;
                             }
                         }
-                        if (!$ageMatch) $match = false;
+                        if (!$genderMatch) $match = false;
+                    }
+
+                    // Check kids age conditions
+                    if ($conditions['use_kids_age']) {
+                        $ages = array_filter(explode(',', $form['kids_ages'] ?? ''));
+                        $ageMatchCount = 0;
+                        foreach ($ages as $age) {
+                            if ($age >= $conditions['kids_age_from'] && $age <= $conditions['kids_age_to']) {
+                                $ageMatchCount++;
+                            }
+                        }
+                        if ($ageMatchCount === 0) {
+                            $match = false;
+                        } else {
+                            $matchCount = $ageMatchCount;
+                        }
                     }
 
                     // Check city conditions
@@ -983,32 +1147,61 @@ try {
                     }
 
                     // Check married years conditions
-                    if ($conditions['use_married']) {
-                        $m1 = $form['sum_kids_m1'] ?? 0;
-                        $m2 = $form['sum_kids_m2'] ?? 0;
-                        $m3 = $form['sum_kids_m3'] ?? 0;
+                    if ($conditions['use_married_years']) {
+                        $m1 = intval($form['sum_kids_m1'] ?? 0);
+                        $m2 = intval($form['sum_kids_m2'] ?? 0);
+                        $m3 = intval($form['sum_kids_m3'] ?? 0);
                         
-                        $yearsFrom = $conditions['married_years_from'] ?? 0;
-                        $yearsTo = $conditions['married_years_to'] ?? 50;
+                        $yearsFrom = intval($conditions['married_years_from'] ?? 0);
+                        $yearsTo = intval($conditions['married_years_to'] ?? 50);
                         
-                        $matchMarried = false;
-                        if ($yearsFrom <= 3 && $yearsTo >= 0 && $m1 > 0) $matchMarried = true;
-                        if ($yearsFrom <= 9 && $yearsTo >= 3 && $m2 > 0) $matchMarried = true;
-                        if ($yearsFrom <= 50 && $yearsTo >= 9 && $m3 > 0) $matchMarried = true;
+                        $matchMarried = 0;
+                        // 0-3 years
+                        if ($yearsFrom <= 3 && $yearsTo >= 0) $matchMarried += $m1;
+                        // 3-9 years
+                        if ($yearsFrom <= 9 && $yearsTo >= 3) $matchMarried += $m2;
+                        // 9+ years
+                        if ($yearsFrom <= 50 && $yearsTo >= 9) $matchMarried += $m3;
                         
-                        if (!$matchMarried) $match = false;
+                        if ($matchMarried === 0) {
+                            $match = false;
+                        } else {
+                            $multiplier = $matchMarried;
+                        }
                     }
 
                     // Check kids count conditions
                     if ($conditions['use_kids_count']) {
-                        $kidsCount = $form['kids_count'] ?? 0;
+                        $kidsCount = intval($form['kids_count'] ?? 0);
                         if ($kidsCount < $conditions['kids_from'] || $kidsCount > $conditions['kids_to']) {
                             $match = false;
+                        } else {
+                            $multiplier = $kidsCount;
                         }
                     }
 
+                    // Calculate amount based on calculation type
                     if ($match) {
-                        $matchedAmount += $calc['amount'];
+                        switch ($calculationType) {
+                            case 'fixed':
+                                // Fixed amount
+                                $matchedAmount += $amount;
+                                break;
+                            case 'multiply':
+                                // Multiply by count (e.g., number of married couples)
+                                $matchedAmount += $amount * $multiplier;
+                                break;
+                            case 'per_item':
+                                // Amount per item (e.g., per child)
+                                $matchedAmount += $amount * ($matchCount > 0 ? $matchCount : $multiplier);
+                                break;
+                            case 'per_match':
+                                // Amount per match (e.g., per child in age range)
+                                $matchedAmount += $amount * $matchCount;
+                                break;
+                            default:
+                                $matchedAmount += $amount;
+                        }
                     }
                 }
 

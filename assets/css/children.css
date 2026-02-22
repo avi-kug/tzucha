@@ -45,6 +45,35 @@
 #beitNeemanTable td {
     white-space: nowrap;
     padding: 0.5rem;
+    text-align: right;
+}
+
+/* Fix for DataTables sorting icons with RTL text */
+#childrenTable thead th,
+#beitNeemanTable thead th {
+    position: relative;
+    padding-left: 1.5rem !important;
+}
+
+#childrenTable thead th.sorting:before,
+#childrenTable thead th.sorting:after,
+#childrenTable thead th.sorting_asc:before,
+#childrenTable thead th.sorting_asc:after,
+#childrenTable thead th.sorting_desc:before,
+#childrenTable thead th.sorting_desc:after,
+#beitNeemanTable thead th.sorting:before,
+#beitNeemanTable thead th.sorting:after,
+#beitNeemanTable thead th.sorting_asc:before,
+#beitNeemanTable thead th.sorting_asc:after,
+#beitNeemanTable thead th.sorting_desc:before,
+#beitNeemanTable thead th.sorting_desc:after {
+    left: 0.5rem !important;
+    right: auto !important;
+}
+
+#childrenTable td,
+#beitNeemanTable td {
+    padding-left: 0.5rem;
 }
 
 /* Modal form styling for children */

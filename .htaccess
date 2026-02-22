@@ -30,6 +30,54 @@ RedirectMatch 404 /\.git
     Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
 </IfModule>
 
+# DDoS Protection - Rate Limiting
+<IfModule mod_ratelimit.c>
+    # Limit output to 400 KB/s per connection
+    SetOutputFilter RATE_LIMIT
+    SetEnv rate-limit 400
+</IfModule>
+
+# Connection limits per IP (requires mod_qos or mod_evasive)
+<IfModule mod_qos.c>
+    # Max 20 concurrent connections per IP
+    QS_SrvMaxConnPerIP 20
+    # Max 60 requests per 10 seconds per IP
+    QS_SrvRequestRate 60
+</IfModule>
+
+<IfModule mod_evasive20.c>
+    DOSHashTableSize 3097
+    DOSPageCount 5
+    DOSSiteCount 100
+    DOSPageInterval 1
+    DOSSiteInterval 1
+    DOSBlockingPeriod 60
+</IfModule>
+
+# Limit request body size (10MB)
+LimitRequestBody 10485760
+
+# Timeout protection
+<IfModule mod_reqtimeout.c>
+    RequestReadTimeout header=20-40,MinRate=500 body=20-40,MinRate=500
+</IfModule>
+
+# Block common attack patterns
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    
+    # Block SQL injection attempts
+    RewriteCond %{QUERY_STRING} (\<|%3C).*script.*(\>|%3E) [NC,OR]
+    RewriteCond %{QUERY_STRING} GLOBALS(=|\[|\%[0-9A-Z]{0,2}) [OR]
+    RewriteCond %{QUERY_STRING} _REQUEST(=|\[|\%[0-9A-Z]{0,2})
+    RewriteRule ^(.*)$ - [F,L]
+    
+    # Block suspicious user agents
+    RewriteCond %{HTTP_USER_AGENT} ^$ [OR]
+    RewriteCond %{HTTP_USER_AGENT} ^(-|wget|curl|libwww|python|nikto|scan) [NC]
+    RewriteRule ^(.*)$ - [F,L]
+</IfModule>
+
 # PHP security settings (for production)
 <IfModule mod_php.c>
     php_flag expose_php Off

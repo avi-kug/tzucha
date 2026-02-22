@@ -1,0 +1,33 @@
+# Nixpacks Configuration for Railway
+# Used to deploy Tzucha PHP application
+
+[phases.setup]
+nixPkgs = [
+    'php82',
+    'php82Extensions.pdo',
+    'php82Extensions.pdo_mysql',
+    'php82Extensions.mysqli',
+    'php82Extensions.mbstring',
+    'php82Extensions.gd',
+    'php82Extensions.xml',
+    'php82Extensions.zip',
+    'php82Extensions.curl',
+    'php82Extensions.intl',
+    'php82Extensions.bcmath',
+    'nginx'
+]
+
+[phases.install]
+cmds = [
+    'composer install --no-dev --optimize-autoloader'
+]
+
+[phases.build]
+
+[start]
+cmd = '''
+    # Start PHP-FPM
+    php-fpm -D -y /app/php-fpm.conf && \
+    # Start nginx
+    nginx -c /app/nginx.conf -g "daemon off;"
+'''

@@ -329,6 +329,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
             $spreadsheet->getProperties()->setCreator('Tzucha System')->setTitle('Expenses Export');
             $sheet = $spreadsheet->getActiveSheet();
+            $sheet->setRightToLeft(true);
             $sheet->setCellValue('A1', 'תאריך');
             $sheet->setCellValue('B1', 'עבור');
             $sheet->setCellValue('C1', 'חנות');

@@ -1,9 +1,18 @@
 <?php
 header('Content-Type: application/json; charset=utf-8');
 require_once '../config/db.php';
-require_once '../config/auth.php';
+require_once '../config/auth_enhanced.php';
 auth_require_login($pdo);
 auth_require_permission('people');
+
+// DDoS Protection
+try {
+    check_api_rate_limit($_SERVER['REMOTE_ADDR'], 60, 60); // 60 requests per minute
+    check_request_size(); // Max 10MB
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    exit;
+}
 
 // Get the action
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
@@ -49,6 +58,13 @@ try {
         
         case 'add':
             // Add a new person
+            // Prevent duplicate submissions
+            check_idempotency($pdo, 'add_person', [
+                'full_name' => $_POST['full_name'] ?? '',
+                'husband_id' => $_POST['husband_id'] ?? '',
+                'wife_id' => $_POST['wife_id'] ?? ''
+            ], 60); // 60 seconds window
+            
             $stmt = $pdo->prepare("INSERT INTO people (
                 amarchal, gizbar, software_id, donor_number, chatan_harar, family_name, first_name, 
                 name_for_mail, full_name, husband_id, wife_id, phone_id, address, mail_to, neighborhood, 
@@ -134,6 +150,9 @@ try {
             break;
             
         case 'delete':
+            // Prevent accidental double-delete
+            check_idempotency($pdo, 'delete_person', ['id' => $id], 10); // 10 seconds window
+            
             // Delete a person
             $id = $_POST['id'] ?? 0;
             
@@ -150,6 +169,9 @@ try {
         case 'delete_bulk':
             $ids = $_POST['ids'] ?? [];
             if (is_string($ids)) {
+            // Prevent accidental bulk deletion
+            check_idempotency($pdo, 'delete_bulk_people', ['ids' => $ids], 10); // 10 seconds window
+            
                 $decoded = json_decode($ids, true);
                 if (is_array($decoded)) {
                     $ids = $decoded;
