@@ -14,8 +14,37 @@ nixPkgs = [
     'php82Extensions.curl',
     'php82Extensions.intl',
     'php82Extensions.bcmath',
+    'php82Extensions.dom',
+    'php82Extensions.fileinfo',
+    'php82Extensions.simplexml',
+    'php82Extensions.xmlreader',
+    'php82Extensions.xmlwriter',
     'nginx'
 ]
+
+[phases.setup.nixOverlays]
+# Ensure GD extension is properly configured
+nixpkgsOverlay = '''
+  final: prev: {
+    php = prev.php.buildEnv {
+      extensions = { enabled, all }: enabled ++ (with all; [
+        gd
+        pdo
+        pdo_mysql
+        mysqli
+        mbstring
+        xml
+        zip
+        curl
+        intl
+        bcmath
+        dom
+        fileinfo
+        simplexml
+      ]);
+    };
+  }
+'''
 
 [phases.install]
 cmds = [
