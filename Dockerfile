@@ -1,7 +1,7 @@
-# Use official PHP image with FPM
+# Use official PHP image with FPM (PHP 8.2)
 FROM php:8.2-fpm
 
-# Install system dependencies
+# Install system dependencies required for PHP extensions
 RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libjpeg62-turbo-dev \
@@ -14,9 +14,11 @@ RUN apt-get update && apt-get install -y \
     supervisor \
     && rm -rf /var/lib/apt/lists/*
 
-# Configure and install PHP extensions
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
+# Configure GD extension with freetype and jpeg support
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg
+
+# Install all required PHP extensions
+RUN docker-php-ext-install -j$(nproc) \
     gd \
     pdo \
     pdo_mysql \
